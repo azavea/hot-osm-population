@@ -1,0 +1,72 @@
+# Project generated files #
+
+metastore_db
+third_party_sources
+derby.log
+
+# Test Data #
+src/test-data
+
+# AWS #
+
+*.pem
+
+# Operating System Files #
+
+*.DS_Store
+Thumbs.db
+
+# Build Files #
+
+bin
+target
+build/
+.gradle
+
+# Eclipse Project Files #
+
+.classpath
+.project
+.settings
+
+# Vagrant
+
+.vagrant
+
+# Terraform
+deployment/terraform/.terraform
+deployment/terraform/terraform.tfvars
+.terraform.tfstate.lock.info
+*.tfvars
+*.tfstate
+*.tfplan
+*.tfstate.backup
+.terraform
+
+# Node and Webpack
+node_modules/
+npm-debug.log
+vendor.bundle.js
+dist/
+
+
+# IntelliJ IDEA Files #
+
+*.iml
+*.ipr
+*.iws
+*.idea
+
+# macOS
+.DS_Store
+
+# Emacs #
+
+.ensime
+\#*#
+*~
+.#*
+
+*.jar
+
+derby.log
