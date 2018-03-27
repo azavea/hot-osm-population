@@ -15,52 +15,169 @@
 
 <div id='map'></div>
   <script>
+   function MercatorToLatLon(mercX, mercY) {
+     var rMajor = 6378137; //Equatorial Radius, WGS84
+     var shift  = Math.PI * rMajor;
+     var lon    = mercX / shift * 180.0;
+     var lat    = mercY / shift * 180.0;
+     lat = 180 / Math.PI * (2 * Math.atan(Math.exp(lat * Math.PI / 180.0)) - Math.PI / 2.0);
+
+     return { 'x': lon, 'y': lat };
+   }
+
+   var africaTiles12 = {
+     "colMin": 1848,
+     "colMax": 2633,
+     "rowMin": 1589,
+     "rowMax": 2471
+   };
+
+   function mercatorTile(tx, ty, zoom) {
+       var worldExtent = {
+           "min": -2.0037508342789244E7,
+           "max":  2.0037508342789244E7
+       };
+
+       var tw = (worldExtent["max"] - worldExtent["min"]) / Math.pow(2, zoom);
+
+       return {
+           "xmin": worldExtent["min"] + tw * tx,
+           "ymin": worldExtent["min"] + tw * ty,
+           "xmax": worldExtent["min"] + tw * (tx + 1),
+           "ymax": worldExtent["min"] + tw * (ty + 1)
+       };
+   }
+
+   function llTile(tx, ty, zoom) {
+       var wmTile = mercatorTile(tx, ty, zoom);
+       var min = MercatorToLatLon(wmTile["xmin"], wmTile["ymin"]);
+       var max = MercatorToLatLon(wmTile["xmax"], wmTile["ymax"]);
+       return {
+           "xmin": min["x"],
+           "ymin": min["y"],
+           "xmax": max["x"],
+           "ymax": max["y"]
+       };
+   }
+
+   function tileFeature12(tx, ty) {
+       var coords = [];
+       var tile = llTile(tx, ty, 12);
+       coords.push([tile["xmin"], tile["ymin"]]);
+       coords.push([tile["xmax"], tile["ymin"]]);
+       coords.push([tile["xmax"], tile["ymax"]]);
+       coords.push([tile["xmin"], tile["ymax"]]);
+       coords.push([tile["xmin"], tile["ymin"]]);
+
+       return {
+           "type": "Feature",
+           "properties": {
+               "name": "(" + String(tx) + ", " + String(ty) + ")"
+           },
+           "geometry": {
+               "type": "Polygon",
+               "coordinates": [coords]
+           }
+       };
+   }
+
+   function reticle12() {
+       var features = [];
+       for (var tx = africaTiles12["colMin"]; tx <= africaTiles12["colMax"]; tx += 1) {
+           for (var ty = africaTiles12["rowMin"]; ty <= africaTiles12["rowMax"]; ty += 1) {
+               features.push(tileFeature12(tx, ty));
+           }
+       }
+
+       return {
+           "type": "geojson",
+           "data": {
+               "type": "FeatureCollection",
+               "features": features
+           }
+       };
+   }
+
    mapboxgl.accessToken = '';
    var map = new mapboxgl.Map({
      container: 'map',
      <!-- style: 'http://osm-liberty.lukasmartinelli.ch/style.json',-->
-     style: 'mapbox://styles/mapbox/satellite-v9',
+     style: 'mapbox://styles/mapbox/satellite-streets-v9',
      hash: false,
      zoom: 12,
      center: [25.9231, -24.6282]
-});
+   });
 
-map.on('load', function() {
-  // Add VecTiles source
-  map.addLayer({
-    "id": "osm-history",
-    "type": "line",
-    "source": {
-      "type": "vector",
-      "tiles": ["https://s3.amazonaws.com/osmesa/vectortiles/{z}/{x}/{y}.mvt"],
-      "minzoom": 1,
-      "maxzoom": 20
-    },
-    "source-layer": "history",
-    "layout": {
-      "line-cap": "round",
-      "line-join": "round"
-    },
-    "paint": {
-      "line-opacity": 0.4,
-      "line-color": "rgb(255, 24, 24)",
-      "line-width": 2
-    }
-  });
+   map.on('load', function() {
+       // Add VecTiles source
+       map.addLayer({
+           "id": "osm-history",
+           "type": "line",
+           "source": {
+               "type": "vector",
+               "tiles": ["https://s3.amazonaws.com/osmesa/vectortiles/{z}/{x}/{y}.mvt"],
+               "minzoom": 1,
+               "maxzoom": 20
+           },
+           "source-layer": "history",
+           "layout": {
+               "line-cap": "round",
+               "line-join": "round"
+           },
+           "paint": {
+               "line-opacity": 0.4,
+               "line-color": "rgb(255, 24, 24)",
+               "line-width": 2
+           }
+       });
 
-  map.on("mousemove", "osm-history", function(e) {
-    console.log(e)
-    var osm_info = {
-      "creation": e.features[0].properties["__creation"],
-      "updated": e.features[0].properties["__updated"],
-      "lastAuthor": e.features[0].properties["__lastAuthor"],
-      "authors": e.features[0].properties["__authors"]
-    }
-    console.log(osm_info)
-  });
-});
+       map.addLayer({
+           "id": "country-bounds",
+           "type": "line",
+           "source": {
+               "type": "geojson",
+               "data": "africa.geojson"
+           },
+           "paint": {
+               "line-color": "#ffffff"
+           }
+       });
 
-map.addControl(new mapboxgl.NavigationControl());
+       map.addSource("reticle", reticle12());
+       map.addLayer({
+           "id": "grid-lines",
+           "type": "fill",
+           "source": "reticle",
+           "layout": {},
+           "paint": {
+               // "line-color": "#008888",
+               // "line-opacity": 0.5,
+               // "line-width": 3,
+               "fill-color": "rgba(0.0,0.0,0.0,0.0)",
+               "fill-opacity": 1.0,
+               "fill-outline-color": 'rgba(0.0,136.0,136.0,0.75)'
+           }
+       });
+
+       // map.on("click", "osm-history", function(e) {
+       //     console.log(e)
+       // });
+
+       map.on("click", "grid-lines", function(e) {
+           console.log("Clicked " + e.features[0].properties.name + " with event " + e);
+           new mapboxgl.Popup()
+               .setLngLat(e.lngLat)
+               .setHTML(e.features[0].properties.name)
+               .addTo(map);
+       });
+
+       map.on("click", function(e) {
+           console.log(e);
+           console.log(e.target.transform._zoom);
+       });
+   });
+
+   map.addControl(new mapboxgl.NavigationControl());
 </script>
 
 </body>
