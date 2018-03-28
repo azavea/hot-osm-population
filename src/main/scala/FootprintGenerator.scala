@@ -6,17 +6,28 @@ import geotrellis.raster.rasterize._
 import geotrellis.spark._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
+import geotrellis.vector.voronoi._
 import geotrellis.vectortile._
 
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.vividsolutions.jts
 import org.apache.commons.io.IOUtils
+import spire.syntax.cfor._
 
-case class FootprintGenerator(bucket: String, prefix: String, tileCrs: CRS = WebMercator) {
+case class FootprintGenerator(bucket: String, prefix: String, country: String, tileCrs: CRS = WebMercator) {
+
+  private val countryBound = CountryGeometry(country) match {
+    case Some(feat) => feat.geom.reproject(LatLng, tileCrs)
+    case None => throw new MatchError(s"Country code $country did not match")
+  }
 
   private val s3client = AmazonS3ClientBuilder.defaultClient
 
-  def fetchBuildings(layer: String, key: SpatialKey, ll: LayoutLevel) = {
+  /** Retrieve building features from a vectortile store
+   *
+   *  The vectortiles are drawn from the S3 bucket s3://${bucket}/${prefix}/${z}/${x}/${y}.mvt
+   */
+  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "history") = {
     val LayoutLevel(zoom, ld) = ll
     val tileExtent = ld.mapTransform(key)
 
@@ -29,68 +40,115 @@ case class FootprintGenerator(bucket: String, prefix: String, tileCrs: CRS = Web
       .filter{ feat => feat.data.contains("building") } // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
   }
 
-  def apply(layer: String, key: SpatialKey, layout: LayoutLevel) = {
+  /** Generate building polygons with corresponding number of levels
+   */
+  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string") = {
     val LayoutLevel(zoom, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
-    val buildings = fetchBuildings(layer, key, layout)
+    val buildings = fetchBuildings(key, layout, layer)
+    val gpr = new jts.precision.GeometryPrecisionReducer(new jts.geom.PrecisionModel)
+
+    buildings.flatMap{ feat =>
+      val poly = feat.geom
+      val validated = if (!poly.isValid) { gpr.reduce(poly.jtsGeom) } else poly.jtsGeom
+      val levels = feat.data.get("building:levels") match {
+        case Some(VString(s)) => s.toDouble
+        case Some(VInt64(l)) => l.toDouble
+        case Some(VSint64(l)) => l.toDouble
+        case Some(VWord64(l)) => l.toDouble
+        case Some(VFloat(f)) => f.toDouble
+        case Some(VDouble(d)) => d
+        case _ => 1.0
+      }
+      validated match {
+        case p: jts.geom.Polygon if !p.isEmpty=>
+          Seq( (Polygon(p), levels) )
+        case mp: jts.geom.MultiPolygon =>
+          MultiPolygon(mp).polygons.toSeq.map{ p => (p, levels) }
+        case _ => Seq.empty
+      }
+    }
+  }
+
+  /** Produce a raster giving the total square footage of buildings per pixel in a given
+   *  spatial key with a given layout
+   */
+  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history") = {
+    val LayoutLevel(zoom, ld) = layout
+    val tileExtent = ld.mapTransform(key)
 
     val raster = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
     val re = raster.rasterExtent
-    // use an equal area projection for Africa (assuming that this application will focus on African use-cases
+
+    // compute land area of pixel using an equal area projection for Africa (assumes that this application will focus on African use-cases)
     val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
     val cellArea = tileExtent.toPolygon.reproject(tileCrs, africaAEA).area * re.cellwidth * re.cellheight / re.extent.area
 
-    val gpr = new jts.precision.GeometryPrecisionReducer(new jts.geom.PrecisionModel)
-
-    buildings
-      .foreach{ feat => {
-        val poly = feat.geom
-        val validated = if (!poly.isValid) { gpr.reduce(poly.jtsGeom) } else poly.jtsGeom
-
-        val levels = feat.data.get("building:levels") match {
-          case Some(VString(s)) => s.toDouble
-          case Some(VInt64(l)) => l.toDouble
-          case Some(VSint64(l)) => l.toDouble
-          case Some(VWord64(l)) => l.toDouble
-          case Some(VFloat(f)) => f.toDouble
-          case Some(VDouble(d)) => d
-          case _ => 1.0
-        }
-
-        var accum = 0.0
-        scala.util.Try(
-          validated match {
-            case p: jts.geom.Polygon if !p.isEmpty=>
-              polygon.FractionalRasterizer.foreachCellByPolygon(Polygon(p), re)(new FractionCallback{
-                def callback(col: Int, row: Int, frac: Double) = {
-                  if (col >=0 && col < re.cols && row >= 0 && row < re.rows) {
-                    raster.setDouble(col, row, frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row)))
-                    accum += frac * cellArea
-                  }
-                }
-              })
-            case mp: jts.geom.MultiPolygon =>
-              polygon.FractionalRasterizer.foreachCellByMultiPolygon(MultiPolygon(mp), re)(new FractionCallback{
-                def callback(col: Int, row: Int, frac: Double) = {
-                  if (col >=0 && col < re.cols && row >= 0 && row < re.rows) {
-                    raster.setDouble(col, row, frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row)))
-                    accum += frac * cellArea
-                  }
-                }
-              })
-            case g => println(s"Encountered unexpected geometry: $g\ninitial feature: $poly")
+    var accum = 0.0
+    buildingPolysWithLevels(key, layout, layer)
+      .foreach{ case (poly, levels) => {
+        polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback{
+          def callback(col: Int, row: Int, frac: Double) = {
+            if (col >=0 && col < re.cols && row >= 0 && row < re.rows) {
+              raster.setDouble(col, row, frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row)))
+              accum += frac * cellArea
+            }
           }
-        ) match {
-          case scala.util.Failure(ex) =>
-            println(tileExtent.toPolygon)
-            throw ex
-          case _ => ()
-        }
-
+        })
       }}
 
     raster
+  }
+
+  /** Produce a building density raster using a k-nearest neighbors weighted density estimate
+   *
+   * At present, this function is not recommended to be used in actual analysis.
+   */
+  def buildingDensity(key: SpatialKey, layout: LayoutLevel, k: Int = 25, layer: String = "history") = {
+    val LayoutLevel(zoom, ld) = layout
+    val tileExtent = ld.mapTransform(key)
+
+    val weightedPts = buildingPolysWithLevels(key, layout, layer).map{ case (poly, levels) => {
+      (poly.centroid.as[Point].get, levels * poly.area)
+    }}
+
+    val index = SpatialIndex(weightedPts){ case (p, _) => (p.x, p.y) }
+
+    val raster = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
+    val re = raster.rasterExtent
+
+    println(s"Center of extent: ${re.extent.centroid}")
+    cfor(0)(_ < ld.tileCols, _ + 1){ col =>
+      cfor(0)(_ < ld.tileRows, _ + 1){ row =>
+        val (x, y) = re.gridToMap(col, row)
+        if (col == 128 && row == 128) {
+          println(s"($col, $row) -> ($x, $y)")
+        }
+        val knn = index.kNearest(x, y, k)
+        val weights = knn.map(_._2).reduce(_+_)
+        val r = knn.map(_._1.distance(Point(x, y))).max
+        raster.tile.setDouble(col, row, weights / (math.Pi * r * r))
+      }
+    }
+
+    raster
+  }
+
+  /** Return the total square-meter coverage of buildings in a given spatial key.
+   */
+  def buildingArea(key: SpatialKey, layout: LayoutLevel, layer: String = "history") = {
+    val buildings = apply(key, layout, layer)
+
+    var accum = 0.0
+    var count = 0
+    countryBound.foreach(buildings.rasterExtent, Rasterizer.Options(true, PixelIsArea)){ (x: Int, y: Int) =>
+      val v = buildings.getDouble(x, y)
+      if (!v.isNaN) accum += v
+      count += 1
+    }
+
+    (accum, count)
   }
 
 }
