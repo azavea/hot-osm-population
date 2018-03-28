@@ -42,9 +42,9 @@
 
        return {
            "xmin": worldExtent["min"] + tw * tx,
-           "ymin": worldExtent["min"] + tw * ty,
+           "ymin": worldExtent["max"] - tw * (ty + 1),
            "xmax": worldExtent["min"] + tw * (tx + 1),
-           "ymax": worldExtent["min"] + tw * (ty + 1)
+           "ymax": worldExtent["max"] - tw * ty
        };
    }
 
@@ -155,7 +155,7 @@
                // "line-width": 3,
                "fill-color": "rgba(0.0,0.0,0.0,0.0)",
                "fill-opacity": 1.0,
-               "fill-outline-color": 'rgba(0.0,136.0,136.0,0.75)'
+               "fill-outline-color": 'rgba(0.0,255.0,136.0,0.8)'
            }
        });
 
