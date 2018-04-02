@@ -13,6 +13,7 @@ scalaVersion in ThisBuild := Version.scala
 val common = Seq(
   resolvers ++= Seq(
     "locationtech-releases" at "https://repo.locationtech.org/content/groups/releases",
+    "locationtech-snapshots" at "https://repo.locationtech.org/content/groups/snapshots",
     Resolver.bintrayRepo("azavea", "maven"),
     "Geotools" at "http://download.osgeo.org/webdav/geotools/"
   ),
