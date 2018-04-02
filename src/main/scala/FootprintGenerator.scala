@@ -42,7 +42,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
 
   /** Generate building polygons with corresponding number of levels
    */
-  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string") = {
+  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string"): Seq[(Polygon, Double)] = {
     val LayoutLevel(zoom, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
@@ -74,7 +74,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
   /** Produce a raster giving the total square footage of buildings per pixel in a given
    *  spatial key with a given layout
    */
-  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history") = {
+  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history"): Raster[FloatArrayTile] = {
     val LayoutLevel(zoom, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
@@ -105,7 +105,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
    *
    * At present, this function is not recommended to be used in actual analysis.
    */
-  def buildingDensity(key: SpatialKey, layout: LayoutLevel, k: Int = 25, layer: String = "history") = {
+  def buildingDensity(key: SpatialKey, layout: LayoutLevel, k: Int = 25, layer: String = "history"): Raster[FloatArrayTile] = {
     val LayoutLevel(zoom, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
