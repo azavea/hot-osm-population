@@ -1,5 +1,7 @@
 package com.azavea.hotosmpopulation
 
+import java.nio.file.{Files, Paths}
+
 import geotrellis.proj4._
 import geotrellis.raster._
 import geotrellis.raster.rasterize._
@@ -8,11 +10,14 @@ import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.voronoi._
 import geotrellis.vectortile._
-
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.vividsolutions.jts
+import com.vividsolutions.jts.geom.TopologyException
+import com.vividsolutions.jts.geom.prep.PreparedPolygon
 import org.apache.commons.io.IOUtils
 import spire.syntax.cfor._
+
+import scala.util._
 
 case class FootprintGenerator(bucket: String, prefix: String, country: String, tileCrs: CRS = WebMercator) {
 
@@ -27,12 +32,15 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
    *
    *  The vectortiles are drawn from the S3 bucket s3://${bucket}/${prefix}/${z}/${x}/${y}.mvt
    */
-  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "history") = {
+  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "history"): Seq[Feature[Polygon, Map[String, Value]]] = {
     val LayoutLevel(zoom, ld) = ll
     val tileExtent = ld.mapTransform(key)
 
-    val s3object = s3client.getObject(bucket, s"$prefix/$zoom/${key._1}/${key._2}.mvt")
-    val vtbuffer = IOUtils.toByteArray(s3object.getObjectContent)
+    val s3key = s"$prefix/$zoom/${key._1}/${key._2}.mvt"
+    val vtbuffer = {
+      val s3object = s3client.getObject(bucket, s3key)
+      IOUtils.toByteArray(s3object.getObjectContent)
+    }
 
     VectorTile.fromBytes(vtbuffer, tileExtent)
       .layers(layer)
@@ -43,8 +51,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
   /** Generate building polygons with corresponding number of levels
    */
   def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string"): Seq[(Polygon, Double)] = {
-    val LayoutLevel(zoom, ld) = layout
-    val tileExtent = ld.mapTransform(key)
+    val LayoutLevel(_, ld) = layout
 
     val buildings = fetchBuildings(key, layout, layer)
     val gpr = new jts.precision.GeometryPrecisionReducer(new jts.geom.PrecisionModel)
@@ -53,7 +60,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
       val poly = feat.geom
       val validated = if (!poly.isValid) { gpr.reduce(poly.jtsGeom) } else poly.jtsGeom
       val levels = feat.data.get("building:levels") match {
-        case Some(VString(s)) => s.toDouble
+        case Some(VString(s)) => Try(s.toDouble).toOption.getOrElse(Double.NaN)
         case Some(VInt64(l)) => l.toDouble
         case Some(VSint64(l)) => l.toDouble
         case Some(VWord64(l)) => l.toDouble
@@ -75,7 +82,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
    *  spatial key with a given layout
    */
   def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history"): Raster[FloatArrayTile] = {
-    val LayoutLevel(zoom, ld) = layout
+    val LayoutLevel(_, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
     val raster = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
@@ -85,17 +92,24 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
     val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
     val cellArea = tileExtent.toPolygon.reproject(tileCrs, africaAEA).area * re.cellwidth * re.cellheight / re.extent.area
 
-    var accum = 0.0
     buildingPolysWithLevels(key, layout, layer)
       .foreach{ case (poly, levels) => {
-        polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback{
-          def callback(col: Int, row: Int, frac: Double) = {
-            if (col >=0 && col < re.cols && row >= 0 && row < re.rows) {
-              raster.setDouble(col, row, frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row)))
-              accum += frac * cellArea
+        try {
+          polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback {
+            def callback(col: Int, row: Int, frac: Double) = {
+              if (col >= 0 && col < re.cols && row >= 0 && row < re.rows) {
+                val v = frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row))
+                raster.setDouble(col, row, v)
+              }
             }
-          }
-        })
+          })
+        } catch {
+          case e: ArrayIndexOutOfBoundsException =>
+            println(s"ERROR: ArrayIndexOutOfBoundsException in $key")
+
+          case e: TopologyException =>
+            println(s"ERROR: TopologyException in $key: ${e.getMessage}")
+        }
       }}
 
     raster
