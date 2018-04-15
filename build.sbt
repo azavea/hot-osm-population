@@ -37,7 +37,7 @@ val common = Seq(
     "org.apache.spark"            %% "spark-hive"            % Version.spark % Provided,
     "org.apache.spark"            %% "spark-core"            % Version.spark % Provided,
     "org.apache.spark"            %% "spark-sql"             % Version.spark % Provided,
-    "org.apache.spark"            %% "spark-mllib"              % Version.spark % Provided,
+    "org.apache.spark"            %% "spark-mllib"           % Version.spark % Provided,
     "org.locationtech.geotrellis" %% "geotrellis-proj4"      % Version.geotrellis,
     "org.locationtech.geotrellis" %% "geotrellis-vector"     % Version.geotrellis,
     "org.locationtech.geotrellis" %% "geotrellis-raster"     % Version.geotrellis,
@@ -49,8 +49,11 @@ val common = Seq(
     "com.amazonaws"               %  "aws-java-sdk-s3"       % "1.11.143",
     "org.scalatest"               %% "scalatest"             % "3.0.1" % Test,
     "org.spire-math"              %% "spire"                 % Version.spire,
-    "org.typelevel"               %% "cats-core"             % "1.0.0-RC1"
-  ),
+    "org.typelevel"               %% "cats-core"             % "1.0.0-RC1",
+    "com.monovore"                %% "decline"               % "0.4.0-RC1",
+    "org.tpolecat"                %% "doobie-core"           % "0.5.2",
+    "org.xerial"                  %  "sqlite-jdbc"           % "3.21.0"
+),
 
   parallelExecution in Test := false
 )
@@ -62,11 +65,13 @@ val release = Seq(
   licenses += ("Apache-2.0", url("http://apache.org/licenses/LICENSE-2.0"))
 )
 
+
+val MetaInfDiscardRx = """^META-INF(.+)\.(SF|RSA|MF)$""".r
+
 assemblyMergeStrategy in assembly := {
   case s if s.startsWith("META-INF/services") => MergeStrategy.concat
   case "reference.conf" | "application.conf"  => MergeStrategy.concat
-  case "META-INF/MANIFEST.MF" | "META-INF\\MANIFEST.MF" => MergeStrategy.discard
-  case "META-INF/ECLIPSEF.RSA" | "META-INF/ECLIPSEF.SF" => MergeStrategy.discard
+  case MetaInfDiscardRx(_*) => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
 
@@ -90,7 +95,6 @@ lazy val root = Project("hot-osm-population", file(".")).
       |import org.apache.spark.ml.regression._
       |import org.apache.spark.storage.StorageLevel
       |import geotrellis.spark._
-      |
       |
       |implicit val spark: SparkSession = SparkSession.builder().
       |    master("local[8]").appName("RasterFrames").

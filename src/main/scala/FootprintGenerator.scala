@@ -19,33 +19,27 @@ import spire.syntax.cfor._
 
 import scala.util._
 
-case class FootprintGenerator(bucket: String, prefix: String, country: String, tileCrs: CRS = WebMercator) {
+case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS = WebMercator) {
 
   private val countryBound = CountryGeometry(country) match {
     case Some(feat) => feat.geom.reproject(LatLng, tileCrs)
     case None => throw new MatchError(s"Country code $country did not match")
   }
 
-  private val s3client = AmazonS3ClientBuilder.defaultClient
+  val mbtiles = new MBTiles(qaTilesPath, ZoomedLayoutScheme(WebMercator))
 
-  /** Retrieve building features from a vectortile store
-   *
-   *  The vectortiles are drawn from the S3 bucket s3://${bucket}/${prefix}/${z}/${x}/${y}.mvt
-   */
-  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "history"): Seq[Feature[Polygon, Map[String, Value]]] = {
-    val LayoutLevel(zoom, ld) = ll
-    val tileExtent = ld.mapTransform(key)
+  /** Retrieve building features from a vectortile store */
+  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "osm"): Seq[Feature[Polygon, Map[String, Value]]] = {
+    mbtiles.fetch(12, key._1, key._2) match {
+      case Some(vt) =>
+        vt.layers(layer)
+          .polygons
+          .filter{ feat => feat.data.contains("building") }
+      // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
 
-    val s3key = s"$prefix/$zoom/${key._1}/${key._2}.mvt"
-    val vtbuffer = {
-      val s3object = s3client.getObject(bucket, s3key)
-      IOUtils.toByteArray(s3object.getObjectContent)
+      case None =>
+        Seq.empty
     }
-
-    VectorTile.fromBytes(vtbuffer, tileExtent)
-      .layers(layer)
-      .polygons
-      .filter{ feat => feat.data.contains("building") } // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
   }
 
   /** Generate building polygons with corresponding number of levels
@@ -81,7 +75,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
   /** Produce a raster giving the total square footage of buildings per pixel in a given
    *  spatial key with a given layout
    */
-  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history"): Raster[FloatArrayTile] = {
+  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "osm"): Raster[Tile] = {
     val LayoutLevel(_, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
