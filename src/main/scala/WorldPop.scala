@@ -7,6 +7,7 @@ import geotrellis.proj4._
 import geotrellis.spark._
 import geotrellis.raster._
 import geotrellis.raster.io.geotiff._
+import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.reproject.Reproject
 import geotrellis.raster.resample.Sum
 import geotrellis.spark.buffer.BufferedTile
@@ -51,34 +52,26 @@ object WorldPop {
       partitioner = None
     )._2
 
-    popRdd.toRF(columnName)
+    val rf = popRdd.toRF
+    import spark.implicits._
+    rf.select(rf.spatialKeyColumn, $"tile" as columnName).asRF
   }
 
   /**
     * Augment a RasterFrame with a column that contains rasterized OSM building footprint by level.
     * It is required that the RasterFrame key is from WebMercator TMS layout at zoom 12.
     */
-  def withOSMBuildings(rf: RasterFrame, countryCode: String, columnName: String)(implicit spark: SparkSession): RasterFrame = {
+  def withOSMBuildings(rf: RasterFrame, qaTiles: String, countryCode: String, columnName: String)(implicit spark: SparkSession): RasterFrame = {
     import spark.implicits._
 
-    @transient lazy val generator = FootprintGenerator ("osmesa", "vectortiles", countryCode)
+    @transient lazy val generator = FootprintGenerator (qaTiles, countryCode)
 
     val md = rf.tileLayerMetadata.left.get
 
     // this layout level is required to find the vector tiles
     val layoutLevel = ZoomedLayoutScheme(WebMercator, 256).levelForZoom(12)
     val fetchOSMTile = udf { (col: Int, row: Int) =>
-      Try (generator (SpatialKey(col, row), layoutLevel, "history")) match {
-
-        case Success(raster) =>
-          raster.tile: Tile
-
-        case Failure(_: AmazonS3Exception) =>
-          FloatConstantTile(Float.NaN, md.layout.tileCols, md.layout.tileRows): Tile
-
-        case Failure(e) =>
-          throw e // this is probably bad, sound the bells
-      }
+      generator (SpatialKey(col, row), layoutLevel, "osm").tile
     }
 
     rf.withColumn(columnName, fetchOSMTile($"spatial_key.col", $"spatial_key.row")).asRF
@@ -93,7 +86,10 @@ object WorldPop {
                   tilesPerPartition: Int = 32)
   (implicit sc: SparkContext): TileLayerRDD[SpatialKey] = {
 
-    val tiff = SinglebandGeoTiff(file, decompress = false, streaming = true)
+    val tiff: SinglebandGeoTiff = {
+      val rr = Utils.rangeReader(file)
+      GeoTiffReader.readSingleband(rr, decompress = false, streaming = true)
+    }
 
     // TODO: optionally resample to match the layout cellSize
     //require(layout.cellSize == tiff.cellSize,
@@ -112,7 +108,11 @@ object WorldPop {
     val partitions = tilePixelBounds.grouped(tilesPerPartition).toArray
 
     val tileRdd: RDD[(SpatialKey, Tile)] = sc.parallelize(partitions, partitions.length).mapPartitions { part =>
-      val tiff = SinglebandGeoTiff(file, decompress = false, streaming = true)
+      val tiff: SinglebandGeoTiff = {
+        val rr = Utils.rangeReader(file)
+        GeoTiffReader.readSingleband(rr, decompress = false, streaming = true)
+      }
+
       tiff.crop(tilePixelBounds).map { case (pixelBounds, tile) =>
         // back-project pixel bounds to recover the tile key in the layout
         val tileExtent = tiff.rasterExtent.rasterExtentFor(pixelBounds).extent
@@ -143,7 +143,10 @@ object WorldPop {
                          tilesPerPartition: Int = 32)
                        (implicit sc: SparkContext): (RDD[(SpatialKey, BufferedTile[Tile])], TileLayerMetadata[SpatialKey]) = {
 
-    val tiff = SinglebandGeoTiff(file, decompress = false, streaming = true)
+    val tiff: SinglebandGeoTiff = {
+      val rr = Utils.rangeReader(file)
+      GeoTiffReader.readSingleband(rr, decompress = false, streaming = true)
+    }
     val mapTransform = layout.mapTransform
     val tileBounds: GridBounds = mapTransform.extentToBounds(tiff.extent)
 
@@ -165,7 +168,10 @@ object WorldPop {
 
     val tileRdd: RDD[(SpatialKey, BufferedTile[Tile])] =
       sc.parallelize(partitions, partitions.length).mapPartitions { part =>
-        val tiff = SinglebandGeoTiff(file, decompress = false, streaming = true)
+        val tiff: SinglebandGeoTiff = {
+          val rr = Utils.rangeReader(file)
+          GeoTiffReader.readSingleband(rr, decompress = false, streaming = true)
+        }
 
         part.flatMap { bounds =>
           tiff

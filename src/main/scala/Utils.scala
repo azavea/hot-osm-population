@@ -1,26 +1,50 @@
 package com.azavea.hotosmpopulation
 
+import java.net.URI
+import java.nio.file.Paths
+
 import astraea.spark.rasterframes._
 import astraea.spark.rasterframes.ml.TileExploder
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+import com.amazonaws.services.s3.AmazonS3URI
 import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, Tile}
 import geotrellis.raster.io.geotiff.compression.NoCompression
 import geotrellis.raster.resample.{ResampleMethod, Sum}
 import geotrellis.spark._
-
-import geotrellis.spark.io.LayerWriter
+import geotrellis.spark.io._
 import geotrellis.spark.io.cog.COGLayer
 import geotrellis.spark.io.file.FileAttributeStore
 import geotrellis.spark.io.file.cog.{FileCOGLayerReader, FileCOGLayerWriter}
 import geotrellis.spark.io.index.ZCurveKeyIndexMethod
+import geotrellis.spark.io.s3.AmazonS3Client
+import geotrellis.spark.io.s3.util.S3RangeReader
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.tiling.LayoutScheme
+import geotrellis.util.{FileRangeReader, RangeReader}
 import org.apache.spark.sql.functions.{isnan, udf}
 import org.apache.spark.sql.gt.types.TileUDT
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
+import com.amazonaws.services.s3.{AmazonS3URI, AmazonS3Client => AWSAmazonS3Client}
 
 import scala.reflect.ClassTag
 
 object Utils {
+
+  def rangeReader(uri: String): RangeReader = {
+    val javaUri = new URI(uri)
+    javaUri.getScheme match {
+      case "file" | null =>
+        FileRangeReader(Paths.get(javaUri).toFile)
+
+      case "s3" =>
+        val s3Uri = new AmazonS3URI(java.net.URLDecoder.decode(uri, "UTF-8"))
+        val s3Client = new AmazonS3Client(new AWSAmazonS3Client(new DefaultAWSCredentialsProviderChain))
+        S3RangeReader(s3Uri.getBucket, s3Uri.getKey, s3Client)
+
+      case scheme =>
+        throw new IllegalArgumentException(s"Unable to read scheme $scheme at $uri")
+    }
+  }
 
   /** Resample each tile in RasterFrame to new resolution.
     * This method does not sample past tile boundary, which restricts the choice of ResampleMethods.
