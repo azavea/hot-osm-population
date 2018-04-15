@@ -33,35 +33,68 @@ import org.apache.spark.sql.gt.types.TileUDT
 import org.apache.spark.storage.StorageLevel
 import scala.util._
 
-object Train {
+import com.monovore.decline._
+import cats.implicits._
 
-  /** Main Training script */
-  def script(implicit spark: SparkSession): Unit = {
-    import spark.implicits._
-    import Utils._
+object TrainApp extends CommandApp(
+  name   = "train-osm-worldpop",
+  header = "Train a regression model of OSM building footprints vs WorldPop raster for a country",
+  main   = {
+    val countryCodeO = Opts.option[String]("country", help = "Country code to lookup boundary from ne_50m_admin")
+    val worldPopUriO = Opts.option[String]("worldpop", help = "URI of WorldPop raster for a country")
+    val qaTilesPathO = Opts.option[String]("mbtiles", help = "Path to country QA VectorTiles mbtiles file")
+    val modelUriO    = Opts.option[String]("model", help = "URI for model to be saved")
 
-    // read WorldPop in WebMercator Zoom 12
-    val pop: RasterFrame = WorldPop.rasterFrame(
-      "/tmp/WorldPop/BWA15v4.tif", "pop")
+    (
+      countryCodeO, worldPopUriO, qaTilesPathO, modelUriO
+    ).mapN { (countryCode, worldPopUri, qaTilesPath, modelUri) =>
 
-    val popWithOsm: RasterFrame = WorldPop.withOSMBuildings(pop, "BWA", "osm")
-    popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)
+      implicit val spark: SparkSession = SparkSession.builder().
+        appName("WorldPop-OSM-Training").
+        master("local[*]").
+        config("spark.ui.enabled", "true").
+        config("spark.driver.maxResultSize", "2G").
+        getOrCreate().
+        withRasterFrames
 
-    val downsampled = resampleRF(popWithOsm, 32, Average).withSpatialIndex()
-    val features = Utils.explodeTiles(downsampled, filterNaN = true)
+      import spark.implicits._
+      import Utils._
 
-    val model = new LinearRegression().setFitIntercept(true).setLabelCol("osm").fit(features)
-    model.save("/tmp/hot-osm/models/BWA15-avg-32")
-    val scored = model.transform(explodeTiles(downsampled, filterNaN = false))
+      println(s"Spark Configuration:")
+      spark.sparkContext.getConf.getAll.foreach(println)
 
-    val scored_tiles = assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
-    val scored_native = resampleRF(scored_tiles, 256, NearestNeighbor)
+      // read WorldPop in WebMercator Zoom 12
+      val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
 
-    saveCog(
-      rdd = scored_native.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get,
-      catalog = "/tmp/hot-cog", name ="BWA15-prediction-avg", zooms = (12,8))
+      // Add OSM building footprints as rasterized tile column
+      val popWithOsm: RasterFrame = WorldPop.withOSMBuildings(pop, qaTilesPath, countryCode, "osm")
+
+      // We will have to do an IO step, a shuffle and IO, lets cache the result
+      popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+      /** OSM is way more resolute than and has much higher variance than WorldPop
+        * We're going to average out both in 8x8 cells to get a tighter regression
+        */
+      val downsampled = resampleRF(popWithOsm, 32, Average)
+
+      // turn times into pixels so we can train on per-pixel values
+      // filter out places where either WorldPop or OSM is undefined
+      val features = Utils.explodeTiles(downsampled, filterNaN = true)
+
+      val model = new LinearRegression().setFitIntercept(true).setLabelCol("osm").fit(features)
+      model.save(modelUri)
+
+      /** If we want to verify the model output we can save it as GeoTiff */
+      //val scored = model.transform(explodeTiles(downsampled, filterNaN = false))
+      //val scored_tiles = assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
+      //saveCog(
+      //  rdd = scored_native.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get,
+      //  catalog = "/hot-osm/cog", name ="BWA15v4-prediction-avg", zooms = (12,6))
+    }
   }
+)
 
+object Train {
 
   def readWorldPopCog(catalog: String, layer: String)(implicit spark: SparkSession): RasterFrame = {
     import spark.implicits._
