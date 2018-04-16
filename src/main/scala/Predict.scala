@@ -35,7 +35,7 @@ object PredictApp extends CommandApp(
     ).mapN { (worldPopUri, qaTilesPath, countryCode, modelUri, outputUri) =>
 
       implicit val spark: SparkSession = SparkSession.builder().
-        appName("WorldPop-OSM-Training").
+        appName("WorldPop-OSM-Predict").
         master("local[*]").
         config("spark.ui.enabled", "true").
         config("spark.driver.maxResultSize", "2G").
@@ -51,7 +51,7 @@ object PredictApp extends CommandApp(
       val model = LinearRegressionModel.load(modelUri)
 
       val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
-      val popWithOsm: RasterFrame = WorldPop.withOSMBuildings(pop, qaTilesPath, countryCode, "osm")
+      val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, countryCode, "osm")
       val downsampled = resampleRF(popWithOsm, 32, Average)
       val features = Utils.explodeTiles(downsampled, filterNaN = false)
       val scored = model.transform(features)

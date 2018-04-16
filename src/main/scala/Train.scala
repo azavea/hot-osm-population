@@ -67,7 +67,7 @@ object TrainApp extends CommandApp(
       val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
 
       // Add OSM building footprints as rasterized tile column
-      val popWithOsm: RasterFrame = WorldPop.withOSMBuildings(pop, qaTilesPath, countryCode, "osm")
+      val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, countryCode, "osm")
 
       // We will have to do an IO step, a shuffle and IO, lets cache the result
       popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)

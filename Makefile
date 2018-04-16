@@ -16,6 +16,15 @@ ecr-publish:
 	docker tag hot-osm-population:latest 896538046175.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
 	docker push 896538046175.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
 
+train:
+	spark-submit --master "local[*]" --driver-memory 4G \
+--class com.azavea.hotosmpopulation.TrainApp \
+target/scala-2.11/hot-osm-population-assembly.jar \
+--country BWA \
+--worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
+--qatiles /hot-osm/mbtiles/botswana.mbtiles \
+--model /hot-osm/models/BWA-avg-32
+
 predict:
 	spark-submit --master "local[*]" --driver-memory 4G \
 --class com.azavea.hotosmpopulation.PredictApp \
@@ -23,5 +32,5 @@ target/scala-2.11/hot-osm-population-assembly.jar \
 --country BWA \
 --worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
 --qatiles /hot-osm/mbtiles/botswana.mbtiles \
---model /hot-osm/models/avg-38/ \
+--model /hot-osm/models/BWA-avg-32 \
 --output /hot-osm/botswana-predict.json

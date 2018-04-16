@@ -4,12 +4,12 @@ package com.azavea.hotosmpopulation
 import astraea.spark.rasterframes._
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import geotrellis.proj4._
-import geotrellis.spark._
+import geotrellis.spark.{TileLayerRDD, _}
 import geotrellis.raster._
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.reproject.Reproject
-import geotrellis.raster.resample.Sum
+import geotrellis.raster.reproject.{Reproject, ReprojectRasterExtent}
+import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod, Sum}
 import geotrellis.spark.buffer.BufferedTile
 import geotrellis.spark.io.AttributeStore
 import geotrellis.spark.reproject.TileRDDReproject
@@ -58,32 +58,12 @@ object WorldPop {
   }
 
   /**
-    * Augment a RasterFrame with a column that contains rasterized OSM building footprint by level.
-    * It is required that the RasterFrame key is from WebMercator TMS layout at zoom 12.
-    */
-  def withOSMBuildings(rf: RasterFrame, qaTiles: String, countryCode: String, columnName: String)(implicit spark: SparkSession): RasterFrame = {
-    import spark.implicits._
-
-    @transient lazy val generator = FootprintGenerator (qaTiles, countryCode)
-
-    val md = rf.tileLayerMetadata.left.get
-
-    // this layout level is required to find the vector tiles
-    val layoutLevel = ZoomedLayoutScheme(WebMercator, 256).levelForZoom(12)
-    val fetchOSMTile = udf { (col: Int, row: Int) =>
-      generator (SpatialKey(col, row), layoutLevel, "osm").tile
-    }
-
-    rf.withColumn(columnName, fetchOSMTile($"spatial_key.col", $"spatial_key.row")).asRF
-  }
-
-  /**
     * Read TIFF into RDD, in windows that match map transform.
     */
   def readRaster(
                   file: String,
                   layout: LayoutDefinition = Layout,
-                  tilesPerPartition: Int = 32)
+                  tilesPerPartition: Int = 16)
   (implicit sc: SparkContext): TileLayerRDD[SpatialKey] = {
 
     val tiff: SinglebandGeoTiff = {
@@ -107,18 +87,20 @@ object WorldPop {
 
     val partitions = tilePixelBounds.grouped(tilesPerPartition).toArray
 
-    val tileRdd: RDD[(SpatialKey, Tile)] = sc.parallelize(partitions, partitions.length).mapPartitions { part =>
+    val tileRdd: RDD[(SpatialKey, Tile)] = sc.parallelize(partitions, partitions.length).mapPartitions { part: Iterator[Array[TileBounds]] =>
       val tiff: SinglebandGeoTiff = {
         val rr = Utils.rangeReader(file)
         GeoTiffReader.readSingleband(rr, decompress = false, streaming = true)
       }
 
-      tiff.crop(tilePixelBounds).map { case (pixelBounds, tile) =>
-        // back-project pixel bounds to recover the tile key in the layout
-        val tileExtent = tiff.rasterExtent.rasterExtentFor(pixelBounds).extent
-        val layoutTileKey = mapTransform.pointToKey(tileExtent.center)
-        layoutTileKey -> tile
-      }.filterNot { case (key, tile) => tile.isNoDataTile }
+      part.flatMap { bounds =>
+        tiff.crop(bounds).map { case (pixelBounds, tile) =>
+          // back-project pixel bounds to recover the tile key in the layout
+          val tileExtent = tiff.rasterExtent.rasterExtentFor(pixelBounds).extent
+          val layoutTileKey = mapTransform.pointToKey(tileExtent.center)
+          layoutTileKey -> tile
+        }.filterNot { case (key, tile) => tile.isNoDataTile }
+      }
     }
 
     val metadata =

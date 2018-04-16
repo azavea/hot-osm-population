@@ -20,8 +20,9 @@ import spire.syntax.cfor._
 import scala.util._
 
 case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS = WebMercator) {
+  val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
 
-  private val countryBound = CountryGeometry(country) match {
+  val countryBound: MultiPolygon = CountryGeometry(country) match {
     case Some(feat) => feat.geom.reproject(LatLng, tileCrs)
     case None => throw new MatchError(s"Country code $country did not match")
   }
@@ -30,12 +31,12 @@ case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS
 
   /** Retrieve building features from a vectortile store */
   def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "osm"): Seq[Feature[Polygon, Map[String, Value]]] = {
-    mbtiles.fetch(12, key._1, key._2) match {
+    mbtiles.fetch(12, key.col, key.row) match {
       case Some(vt) =>
         vt.layers(layer)
           .polygons
           .filter{ feat => feat.data.contains("building") }
-      // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
+        // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
 
       case None =>
         Seq.empty
@@ -44,9 +45,7 @@ case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS
 
   /** Generate building polygons with corresponding number of levels
    */
-  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string"): Seq[(Polygon, Double)] = {
-    val LayoutLevel(_, ld) = layout
-
+  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String): Seq[(Polygon, Double)] = {
     val buildings = fetchBuildings(key, layout, layer)
     val gpr = new jts.precision.GeometryPrecisionReducer(new jts.geom.PrecisionModel)
 
@@ -79,11 +78,10 @@ case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS
     val LayoutLevel(_, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
-    val raster = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
+    val raster: Raster[FloatArrayTile] = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
     val re = raster.rasterExtent
 
     // compute land area of pixel using an equal area projection for Africa (assumes that this application will focus on African use-cases)
-    val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
     val cellArea = tileExtent.toPolygon.reproject(tileCrs, africaAEA).area * re.cellwidth * re.cellheight / re.extent.area
 
     buildingPolysWithLevels(key, layout, layer)
@@ -92,8 +90,9 @@ case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS
           polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback {
             def callback(col: Int, row: Int, frac: Double) = {
               if (col >= 0 && col < re.cols && row >= 0 && row < re.rows) {
-                val v = frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row))
-                raster.setDouble(col, row, v)
+                val p = raster.tile.getDouble(col, row)
+                val v = frac * cellArea * levels + (if (isNoData(p)) 0.0 else p)
+                raster.tile.setDouble(col, row, v)
               }
             }
           })
