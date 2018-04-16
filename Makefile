@@ -13,8 +13,8 @@ docker: target/scala-2.11/hot-osm-population-assembly.jar
 	docker build aws/task -t hot-osm-population
 
 ecr-publish:
-	docker tag hot-osm-population:latest 896538046175.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
-	docker push 896538046175.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
+	docker tag hot-osm-population:latest 670261699094.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
+	docker push 670261699094.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
 
 train:
 	spark-submit --master "local[*]" --driver-memory 4G \

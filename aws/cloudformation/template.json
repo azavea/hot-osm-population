@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09", 
-    "Description": "aws-batch-example",
+    "Description": "hotosm-population-batch",
     "Parameters": {
         "AWSRegion": {
             "Type": "String",
@@ -20,12 +20,12 @@
         "S3Bucket": {
             "Type": "String",
             "Description": "S3 bucket the job needs access to",
-            "Default": ""
+            "Default": "hotosm-population"
         },
         "LambdaS3Bucket": {
             "Type": "String",
             "Description": "S3 bucket where the Lambda code is",
-            "Default": ""
+            "Default": "hotosm-population"
         },
         "ImageUrl": {
             "Type": "String",
@@ -114,18 +114,18 @@
                         ]
                     ]
                 }, 
-                "GroupDescription": "Security Group for aws-batch-example", 
+                "GroupDescription": "Security Group for hotosm-population",
                 "Tags": [
                     {
                         "Key": "Name", 
-                        "Value": "aws-batch-example"
+                        "Value": "hotosm-population"
                     }, 
                     {
                         "Key": "Project", 
-                        "Value": "aws-batch-example"
+                        "Value": "hotosm-population"
                     }
                 ], 
-                "VpcId": "vpc-617f9604",
+                "VpcId": "vpc-ea28198f",
                 "SecurityGroupEgress": {
                     "CidrIp": "0.0.0.0/0", 
                     "IpProtocol": -1
@@ -296,7 +296,7 @@
                         "Arn"
                     ]
                 },
-                "ComputeEnvironmentName" : "HOT_OSM_Population",
+                "ComputeEnvironmentName" : "hotosm-population",
                 "ComputeResources" : {
                     "SpotIamFleetRole" : {
                         "Fn::GetAtt": [
@@ -318,7 +318,12 @@
                         }
                     ],
                     "Subnets" :  [
-                        "subnet-f2f078df"
+                      "subnet-5a119a3f",
+                      "subnet-47e2861e",
+                      "subnet-f4f977df",
+                      "subnet-6ba8e81c",
+                      "subnet-75902c79",
+                      "subnet-35b98b0f"
                     ],
                     "Type" : "SPOT",
                     "InstanceRole" : {
@@ -335,7 +340,7 @@
                         "Ref": "KeypairName"
                     },
                     "Tags" : {
-                        "Name": "HOT_OSM_Completeness"
+                        "Name": "osma-health"
                     }
                 },
                 "State" : "ENABLED"
@@ -371,7 +376,7 @@
                                 {
                                     "Ref": "S3Bucket"
                                 },
-                                "/models/avg-38/"
+                                "/models/BWA-avg-38/"
                             ]
                         ]
                     },
@@ -389,7 +394,6 @@
                 },
                 "ContainerProperties": {
                     "Command": [
-                        "/task.sh",
                         "Ref::command",
                         "Ref::country",
                         "Ref::country_code",
