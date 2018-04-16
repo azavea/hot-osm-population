@@ -93,23 +93,3 @@ object TrainApp extends CommandApp(
     }
   }
 )
-
-object Train {
-
-  def readWorldPopCog(catalog: String, layer: String)(implicit spark: SparkSession): RasterFrame = {
-    import spark.implicits._
-    val attributeStore = FileAttributeStore(catalog)
-    val reader = FileCOGLayerReader(attributeStore)(spark.sparkContext)
-
-    val layoutScheme = ZoomedLayoutScheme (WebMercator, 256)
-    val layoutLevel = layoutScheme.levelForZoom (12)
-    val layout = layoutLevel.layout
-
-    val rdd = reader.read[SpatialKey, MultibandTile](
-      id = LayerId(layer, layoutLevel.zoom),
-      numPartitions = 64)
-
-    val rf = rdd.toRF(PairRDDConverter.forSpatialMultiband(3))
-    rf.select(rf.spatialKeyColumn, $"band_0" as "pop", $"band_1" as "osm").asRF
-  }
-}

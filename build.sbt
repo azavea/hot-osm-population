@@ -30,7 +30,8 @@ val common = Seq(
   scalacOptions in (Compile, doc) += "-groups",
 
   libraryDependencies ++= Seq(
-    "io.astraea" %% "raster-frames" % "0.6.2-SNAPSHOT",
+    //"io.astraea" %% "raster-frames" % "0.6.2-SNAPSHOT",
+    "io.astraea" %% "raster-frames" % "0.6.1",
     "org.geotools" % "gt-shapefile" % Version.geotools,
     // This is one finicky dependency. Being explicit in hopes it will stop hurting Travis.
     "javax.media" % "jai_core" % "1.1.3" from "http://download.osgeo.org/webdav/geotools/javax/media/jai_core/1.1.3/jai_core-1.1.3.jar",
