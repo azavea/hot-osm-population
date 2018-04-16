@@ -55,7 +55,8 @@ object PredictApp extends CommandApp(
       val downsampled = resampleRF(popWithOsm, 32, Average)
       val features = Utils.explodeTiles(downsampled, filterNaN = false)
       val scored = model.transform(features)
-      Output.generateJsonFromRows(scored, model, outputUri)
+      val assembled = Utils.assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
+      Output.generateJsonFromTiles(assembled, model, outputUri)
     }
   }
 )
@@ -63,6 +64,7 @@ object PredictApp extends CommandApp(
 object Output {
   /** We can generate output just by grouping and aggregating the pixels.
     * They are always associated with their source tile key.
+    * DOES NOT WORK: it appears to have problems dealing with NODATA values?
     */
   def generateJsonFromRows(scored: DataFrame, model: LinearRegressionModel, path: String)(implicit spark: SparkSession): Path = {
     import spark.implicits._

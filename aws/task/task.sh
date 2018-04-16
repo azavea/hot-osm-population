@@ -28,7 +28,7 @@ case ${COMMAND} in
         aws s3 sync /task/model ${MODEL}
     ;;
     PREDICT)
-        aws s3 sync $MODEL /task/model/
+        aws s3 sync ${MODEL} /task/model/
 
         /opt/spark/bin/spark-submit --master "local[*]" --driver-memory 7G \
         --class com.azavea.hotosmpopulation.PredictApp ${JAR} \
