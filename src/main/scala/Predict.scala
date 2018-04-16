@@ -64,7 +64,7 @@ object PredictApp extends CommandApp(
 object Output {
   /** We can generate output just by grouping and aggregating the pixels.
     * They are always associated with their source tile key.
-    * DOES NOT WORK: it appears to have problems dealing with NODATA values?
+    * This appears to be slower than reassembling the tiles
     */
   def generateJsonFromRows(scored: DataFrame, model: LinearRegressionModel, path: String)(implicit spark: SparkSession): Path = {
     import spark.implicits._
@@ -72,14 +72,16 @@ object Output {
     import DefaultJsonProtocol._
 
     val cellsPerTile = 32*32
-    val per_tile = scored.groupBy($"spatial_key").agg(
-      sum($"pop")/cellsPerTile as "act_pop_avg",
-      sum($"pop") as "act_pop_sum",
-      sum($"osm")/cellsPerTile as "act_osm_avg",
-      sum($"osm") as "act_osm_sum",
-      sum($"prediction")/cellsPerTile as "prd_osm_avg",
-      sum($"prediction") as "prd_osm_sum"
-    )
+    val per_tile = scored
+      .na.fill(0, List("pop", "osm"))
+      .groupBy($"spatial_key").agg(
+        sum($"pop")/cellsPerTile as "act_pop_avg",
+        sum($"pop") as "act_pop_sum",
+        sum($"osm")/cellsPerTile as "act_osm_avg",
+        sum($"osm") as "act_osm_sum",
+        sum($"prediction")/cellsPerTile as "prd_osm_avg",
+        sum($"prediction") as "prd_osm_sum"
+      )
 
 
     val rows = per_tile.collect()
