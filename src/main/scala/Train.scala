@@ -42,7 +42,7 @@ object TrainApp extends CommandApp(
   main   = {
     val countryCodeO = Opts.option[String]("country", help = "Country code to lookup boundary from ne_50m_admin")
     val worldPopUriO = Opts.option[String]("worldpop", help = "URI of WorldPop raster for a country")
-    val qaTilesPathO = Opts.option[String]("mbtiles", help = "Path to country QA VectorTiles mbtiles file")
+    val qaTilesPathO = Opts.option[String]("qatiles", help = "Path to country QA VectorTiles mbtiles file")
     val modelUriO    = Opts.option[String]("model", help = "URI for model to be saved")
 
     (

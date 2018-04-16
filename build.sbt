@@ -65,6 +65,7 @@ val release = Seq(
   licenses += ("Apache-2.0", url("http://apache.org/licenses/LICENSE-2.0"))
 )
 
+assemblyJarName in assembly := "hot-osm-population-assembly.jar"
 
 val MetaInfDiscardRx = """^META-INF(.+)\.(SF|RSA|MF)$""".r
 

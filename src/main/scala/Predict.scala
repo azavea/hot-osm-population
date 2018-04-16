@@ -1,5 +1,6 @@
 package com.azavea.hotosmpopulation
 
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
 import astraea.spark.rasterframes._
@@ -13,15 +14,18 @@ import java.nio.file._
 import cats.implicits._
 import com.monovore.decline._
 import geotrellis.raster.resample.Average
+import geotrellis.spark.io.hadoop.HdfsUtils
+import org.apache.hadoop.fs
 import org.apache.spark.ml.regression.LinearRegressionModel
 import org.apache.spark.storage.StorageLevel
+
 
 object PredictApp extends CommandApp(
   name   = "predict-osm-worldpop",
   header = "Predict OSM building density from WorldPop",
   main   = {
     val worldPopUriO = Opts.option[String]("worldpop", help = "URI of WorldPop raster for a country")
-    val qaTilesPathO = Opts.option[String]("mbtiles", help = "Path to country QA VectorTiles mbtiles file")
+    val qaTilesPathO = Opts.option[String]("qatiles", help = "Path to country QA VectorTiles mbtiles file")
     val countryCodeO = Opts.option[String]("country", help = "Country code to lookup boundary from ne_50m_admin")
     val modelUriO    = Opts.option[String]("model", help = "URI for model to be saved")
     val outputUriO   = Opts.option[String]("output", help = "URI for JSON output")
@@ -48,7 +52,6 @@ object PredictApp extends CommandApp(
 
       val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
       val popWithOsm: RasterFrame = WorldPop.withOSMBuildings(pop, qaTilesPath, countryCode, "osm")
-      popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)
       val downsampled = resampleRF(popWithOsm, 32, Average)
       val features = Utils.explodeTiles(downsampled, filterNaN = false)
       val scored = model.transform(features)
