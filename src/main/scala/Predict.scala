@@ -119,7 +119,7 @@ object Output {
         .map(rowToJson)
         .map { case (SpatialKey(col, row), value) =>
           (s"$zoom/$col/$row", value)
-        }
+        }.toMap
 
     val bytes = stats.toJson.compactPrint.getBytes(StandardCharsets.UTF_8)
     Files.write(Paths.get(path), bytes)
