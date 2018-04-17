@@ -10,11 +10,11 @@ aws/task/hot-osm-population-assembly.jar: target/scala-2.11/hot-osm-population-a
 	cp $< $@
 
 docker: target/scala-2.11/hot-osm-population-assembly.jar
-	docker build aws/task -t hot-osm-population
+	docker build aws/task -t hotosm-coverage
 
 ecr-publish:
-	docker tag hot-osm-population:latest 670261699094.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
-	docker push 670261699094.dkr.ecr.us-east-1.amazonaws.com/hot-osm-population:latest
+	docker tag hotosm-coverage:latest 670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-coverage:latest
+	docker push 670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-coverage:latest
 
 train:
 	spark-submit --master "local[*]" --driver-memory 4G \

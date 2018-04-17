@@ -1,568 +1,106 @@
 {
-    "AWSTemplateFormatVersion": "2010-09-09", 
-    "Description": "hotosm-population-batch",
-    "Parameters": {
-        "AWSRegion": {
-            "Type": "String",
-            "Description": "AWS Region to deploy this stack",
-            "Default": "us-east-1",
-            "AllowedValues": [
-                "us-east-1",
-                "us-east-2",
-                "ap-southeast-1"
-            ]
-        },
-        "KeypairName": {
-            "Type": "String",
-            "Description": "Name the EC2 keypair to use for this stack. This should be created before on the console.",
-            "Default": ""
-        },
-        "S3Bucket": {
-            "Type": "String",
-            "Description": "S3 bucket the job needs access to",
-            "Default": "hotosm-population"
-        },
-        "LambdaS3Bucket": {
-            "Type": "String",
-            "Description": "S3 bucket where the Lambda code is",
-            "Default": "hotosm-population"
-        },
-        "ImageUrl": {
-            "Type": "String",
-            "Description": "URL of the task Docker image",
-            "Default": ""
-        }
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "hotosm-coverage-batch-job",
+  "Parameters": {
+    "AWSRegion": {
+      "Type": "String",
+      "Description": "AWS Region to deploy this stack",
+      "Default": "us-east-1",
+      "AllowedValues": [
+        "us-east-1",
+        "us-east-2",
+        "ap-southeast-1"
+      ]
     },
-    "Resources": {
-        "IAM": {
-            "Type": "AWS::IAM::Role", 
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17", 
-                    "Statement": [
-                        {
-                            "Effect": "Allow", 
-                            "Principal": {
-                                "Service": [
-                                    "ec2.amazonaws.com"
-                                ]
-                            }, 
-                            "Action": [
-                                "sts:AssumeRole"
-                            ]
-                        }
-                    ]
-                }, 
-                "Path": "/", 
-                "Policies": [
-                    {
-                        "PolicyName": "root", 
-                        "PolicyDocument": {
-                            "Version": "2012-10-17", 
-                            "Statement": [
-                                {
-                                    "Effect": "Allow", 
-                                    "Action": [
-                                        "ecr:BatchCheckLayerAvailability", 
-                                        "ecr:BatchGetImage", 
-                                        "ecr:GetDownloadUrlForLayer", 
-                                        "ecr:GetAuthorizationToken", 
-                                        "ecs:CreateCluster", 
-                                        "ecs:DeregisterContainerInstance", 
-                                        "ecs:DiscoverPollEndpoint", 
-                                        "ecs:Poll", 
-                                        "ecs:RegisterContainerInstance", 
-                                        "ecs:StartTelemetrySession", 
-                                        "ecs:Submit*", 
-                                        "ecr:GetAuthorizationToken", 
-                                        "ecr:BatchCheckLayerAvailability", 
-                                        "ecr:GetDownloadUrlForLayer", 
-                                        "ecr:BatchGetImage", 
-                                        "logs:CreateLogStream", 
-                                        "logs:PutLogEvents"
-                                    ], 
-                                    "Resource": "*"
-                                }
-                            ]
-                        }
-                    }
-                ], 
-                "RoleName": {
-                    "Fn::Join": [
-                        "-",
-                        [
-                            {
-                                "Fn::Sub": "${AWS::StackName}"
-                            },
-                            "role"
-                        ]
-                    ]
-                }
-            }
-        },
-        "SecurityGroup": {
-            "Type": "AWS::EC2::SecurityGroup", 
-            "Properties": {
-                "GroupName": {
-                    "Fn::Join": [
-                        "-",
-                        [
-                            {
-                                "Fn::Sub": "${AWS::StackName}"
-                            },
-                            "sg"
-                        ]
-                    ]
-                }, 
-                "GroupDescription": "Security Group for hotosm-population",
-                "Tags": [
-                    {
-                        "Key": "Name", 
-                        "Value": "hotosm-population"
-                    }, 
-                    {
-                        "Key": "Project", 
-                        "Value": "hotosm-population"
-                    }
-                ], 
-                "VpcId": "vpc-ea28198f",
-                "SecurityGroupEgress": {
-                    "CidrIp": "0.0.0.0/0", 
-                    "IpProtocol": -1
-                }, 
-                "SecurityGroupIngress": [
-                    {
-                        "CidrIp": "0.0.0.0/0", 
-                        "IpProtocol": "tcp", 
-                        "FromPort": 80, 
-                        "ToPort": 80
-                    }, 
-                    {
-                        "CidrIp": "0.0.0.0/0", 
-                        "IpProtocol": "tcp", 
-                        "FromPort": 443, 
-                        "ToPort": 443
-                    }, 
-                    {
-                        "CidrIp": "0.0.0.0/0", 
-                        "IpProtocol": "tcp", 
-                        "FromPort": 22, 
-                        "ToPort": 22
-                    }, 
-                    {
-                        "CidrIp": "0.0.0.0/0", 
-                        "IpProtocol": "tcp", 
-                        "FromPort": 5432, 
-                        "ToPort": 5432
-                    }, 
-                    {
-                        "CidrIp": "0.0.0.0/0", 
-                        "IpProtocol": "tcp", 
-                        "FromPort": 8000, 
-                        "ToPort": 8000
-                    }
-                ]
-            }
-        },
-        "AWSBatchServiceRole": {
-            "Type": "AWS::IAM::Role", 
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17", 
-                    "Statement": [
-                        {
-                            "Effect": "Allow", 
-                            "Principal": {
-                                "Service": "batch.amazonaws.com"
-                            }, 
-                            "Action": "sts:AssumeRole"
-                        }
-                    ]
-                }, 
-                "ManagedPolicyArns": [
-                    "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
-                ], 
-                "Path": "/service-role/"
-            }
-        },
-        "AmazonEC2SpotFleetRole": {
-            "Type": "AWS::IAM::Role", 
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17", 
-                    "Statement": [
-                        {
-                            "Effect": "Allow", 
-                            "Principal": {
-                                "Service": "spotfleet.amazonaws.com"
-                            }, 
-                            "Action": "sts:AssumeRole"
-                        }
-                    ]
-                }, 
-                "ManagedPolicyArns": [
-                    "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetRole"
-                ], 
-                "Path": "/"
-            }
-        },
-        "BatchInstanceRole": {
-            "Type": "AWS::IAM::Role", 
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17", 
-                    "Statement": [
-                        {
-                            "Effect": "Allow", 
-                            "Principal": {
-                                "Service": "ec2.amazonaws.com"
-                            }, 
-                            "Action": "sts:AssumeRole"
-                        }
-                    ]
-                }, 
-                "ManagedPolicyArns": [
-                    "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-                ], 
-                "Path": "/"
-            }
-        },
-        "BatchInstanceProfile": {
-            "Type": "AWS::IAM::InstanceProfile", 
-            "Properties": {
-                "Roles": [
-                    {
-                        "Ref": "BatchInstanceRole"
-                    }
-                ], 
-                "Path": "/"
-            }
-        },
-        "BatchJobRole": {
-            "Type": "AWS::IAM::Role", 
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17", 
-                    "Statement": [
-                        {
-                            "Effect": "Allow", 
-                            "Principal": {
-                                "Service": "ecs-tasks.amazonaws.com"
-                            }, 
-                            "Action": "sts:AssumeRole"
-                        }
-                    ]
-                }, 
-                "Policies": [
-                    {
-                        "PolicyName": "batch-job-policy", 
-                        "PolicyDocument": {
-                            "Statement": [
-                                {
-                                    "Effect": "Allow", 
-                                    "Action": [
-                                        "s3:PutObject",
-                                        "s3:GetObject"
-                                    ], 
-                                    "Resource": [
-                                        {
-                                            "Fn::Join": [
-                                                "", 
-                                                [
-                                                    "arn:aws:s3:::", 
-                                                    {
-                                                        "Ref": "S3Bucket"
-                                                    }, 
-                                                    "/*"
-                                                ]
-                                            ]
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                ], 
-                "Path": "/"
-            }
-        },
-        "BatchComputeEnvironment": {
-            "Type" : "AWS::Batch::ComputeEnvironment",
-            "Properties" : {
-                "Type" : "MANAGED",
-                "ServiceRole" : {
-                    "Fn::GetAtt": [
-                        "AWSBatchServiceRole",
-                        "Arn"
-                    ]
-                },
-                "ComputeEnvironmentName" : "hotosm-population",
-                "ComputeResources" : {
-                    "SpotIamFleetRole" : {
-                        "Fn::GetAtt": [
-                            "AmazonEC2SpotFleetRole",
-                            "Arn"
-                        ]
-                    },
-                    "ImageId": "ami-28456852",
-                    "MaxvCpus" : 128,
-                    "DesiredvCpus" : 4,
-                    "MinvCpus" : 4,
-                    "BidPercentage" : 50,
-                    "SecurityGroupIds" : [
-                        {
-                            "Fn::GetAtt": [
-                                "SecurityGroup",
-                                "GroupId"
-                            ]
-                        }
-                    ],
-                    "Subnets" :  [
-                      "subnet-5a119a3f",
-                      "subnet-47e2861e",
-                      "subnet-f4f977df",
-                      "subnet-6ba8e81c",
-                      "subnet-75902c79",
-                      "subnet-35b98b0f"
-                    ],
-                    "Type" : "SPOT",
-                    "InstanceRole" : {
-                        "Fn::GetAtt": [
-                            "BatchInstanceProfile",
-                            "Arn"
-                        ]
-                    },
-                    "InstanceTypes" : [
-                        "c4.large",
-                        "c4.xlarge"
-                    ],
-                    "Ec2KeyPair" : {
-                        "Ref": "KeypairName"
-                    },
-                    "Tags" : {
-                        "Name": "osma-health"
-                    }
-                },
-                "State" : "ENABLED"
-            }
-        },
-        "BatchJobDefinition": {
-            "Type": "AWS::Batch::JobDefinition",
-            "Properties": {
-                "Type": "container",
-                "JobDefinitionName": "osm-population-predict",
-                "RetryStrategy": {
-                    "Attempts": 1
-                },
-                "Parameters": {
-                    "command": "predict",
-                    "country_code": "BWA",
-                    "country": "botswana",
-                    "worldpop": {
-                        "Fn::Join": [
-                            "s3://",
-                            [
-                                {
-                                    "Ref": "S3Bucket"
-                                },
-                                "/WorldPop/BWA15v4.tif"
-                            ]
-                        ]
-                    },
-                    "model": {
-                        "Fn::Join": [
-                            "s3://",
-                            [
-                                {
-                                    "Ref": "S3Bucket"
-                                },
-                                "/models/BWA-avg-38/"
-                            ]
-                        ]
-                    },
-                    "output": {
-                        "Fn::Join": [
-                            "s3://",
-                            [
-                                {
-                                    "Ref": "S3Bucket"
-                                },
-                                "/botswana-predictions.json"
-                            ]
-                        ]
-                    }
-                },
-                "ContainerProperties": {
-                    "Command": [
-                        "Ref::command",
-                        "Ref::country",
-                        "Ref::country_code",
-                        "Ref::worldpop",
-                        "Ref::model",
-                        "Ref::output"
-                    ],
-                    "Memory": 7000,
-                    "Privileged": true,
-                    "JobRoleArn": {
-                        "Fn::GetAtt": [
-                            "BatchJobRole",
-                            "Arn"
-                        ]
-                    },
-                    "ReadonlyRootFilesystem": false,
-                    "Vcpus": 2,
-                    "Image": {
-                        "Ref": "ImageUrl"
-                    }
-                }
-            }
-        },
-        "BatchJobQueue": {
-            "Type": "AWS::Batch::JobQueue",
-            "Properties": {
-                "ComputeEnvironmentOrder": [
-                    {
-                        "Order": 1,
-                        "ComputeEnvironment": {"Ref": "BatchComputeEnvironment"}
-                    }
-                ],
-                "State": "ENABLED",
-                "Priority": 1,
-                "JobQueueName": "HighPriority"
-            }
-        },
-        "LambdaExecutionRole": {
-            "Type": "AWS::IAM::Role",
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal":{
-                                "Service": [
-                                    "lambda.amazonaws.com"
-                                ]
-                            },
-                            "Action": [
-                                "sts:AssumeRole"
-                            ]
-                        }
-                    ]
-                },
-                "Path": "/",
-                "Policies": [
-                    {
-                        "PolicyName": "lambda-batch",
-                        "PolicyDocument": {
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "batch:SubmitJob"
-                                    ],
-                                    "Resource": "arn:aws:batch:*:*:*"
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        "PolicyName": "lambda-logs",
-                        "PolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "logs:*"
-                                    ],
-                                    "Resource": "arn:aws:logs:*:*:*"
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        "PolicyName": "lambda-s3",
-                        "PolicyDocument": {
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject"
-                                    ],
-                                    "Resource": [
-                                        {
-                                            "Fn::Join": [
-                                                "",
-                                                [
-                                                    "arn:aws:s3:::",
-                                                    {
-                                                        "Ref": "LambdaS3Bucket"
-                                                    },
-                                                    "/*"
-                                                ]
-                                            ]
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-        },
-        "LambdaTriggerFunction": {
-            "Type": "AWS::Lambda::Function",
-            "Properties": {
-                "Handler": "index.trigger",
-                "Role": {
-                    "Fn::GetAtt":
-                    [
-                        "LambdaExecutionRole",
-                        "Arn"
-                    ]
-                },
-                "Code": {
-                    "S3Bucket": {
-                        "Ref": "LambdaS3Bucket"
-                    },
-                    "S3Key": "lambda/lambda.zip"
-                },
-                "Environment": {
-                    "Variables": {
-                        "JOB_DEFINITION": {
-                            "Ref": "BatchJobDefinition"
-                        },
-                        "JOB_QUEUE": {
-                            "Ref": "BatchJobQueue"
-                        },
-                        "JOB_NAME": "lambda-trigger-job"
-                    }
-                },
-                "Runtime": "nodejs4.3",
-                "Timeout": "25"
-            }
-        },
-        "ScheduledRule": {
-            "Type": "AWS::Events::Rule",
-            "Properties": {
-                "Description": "ScheduledRule",
-                "ScheduleExpression": "rate(10 minutes)",
-                "State": "ENABLED",
-                "Targets": [{
-                    "Arn": { "Fn::GetAtt": ["LambdaTriggerFunction", "Arn"] },
-                    "Id": "TriggerFunction"
-                    }]
-                }
-            },
-            "PermissionForEventsToInvokeLambda": {
-                "Type": "AWS::Lambda::Permission",
-                "Properties": {
-                    "FunctionName": { "Ref": "LambdaTriggerFunction" },
-                    "Action": "lambda:InvokeFunction",
-                    "Principal": "events.amazonaws.com",
-                    "SourceArn": { "Fn::GetAtt": ["ScheduledRule", "Arn"] }
-                }
-            }
-        }
+    "KeypairName": {
+      "Type": "String",
+      "Description": "Name the EC2 keypair to use for this stack. This should be created before on the console.",
+      "Default": ""
+    },
+    "S3Bucket": {
+      "Type": "String",
+      "Description": "S3 bucket the job needs access to",
+      "Default": "hotosm-population"
+    },
+    "ImageUrl": {
+      "Type": "String",
+      "Description": "URL of the task Docker image",
+      "Default": "670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-coverage"
+    },
+    "JobRoleArn": {
+      "Type": "String",
+      "Description": "IAM Role for Batch Job",
+      "Default": "arn:aws:iam::670261699094:role/osma-health-infra-staging-BatchJobRole-O4HIDOW5B8HI"
     }
+  },
+  "Resources": {
+    "BatchJobDefinition": {
+      "Type": "AWS::Batch::JobDefinition",
+      "Properties": {
+        "Type": "container",
+        "JobDefinitionName": "hotosm-coverage-botswana-predict",
+        "RetryStrategy": {
+          "Attempts": 1
+        },
+        "Parameters": {
+          "command": "predict",
+          "country_code": "BWA",
+          "country": "botswana",
+          "worldpop": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/WorldPop/BWA15v4.tif"
+              ]
+            ]
+          },
+          "model": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/models/BWA-avg-38/"
+              ]
+            ]
+          },
+          "output": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/botswana-predictions.json"
+              ]
+            ]
+          }
+        },
+        "ContainerProperties": {
+          "Command": [
+            "Ref::command",
+            "Ref::country",
+            "Ref::country_code",
+            "Ref::worldpop",
+            "Ref::model",
+            "Ref::output"
+          ],
+          "Memory": 7000,
+          "Privileged": true,
+          "JobRoleArn":  {
+            "Ref": "JobRoleArn"
+          },
+          "ReadonlyRootFilesystem": false,
+          "Vcpus": 2,
+          "Image": {
+            "Ref": "ImageUrl"
+          }
+        }
+      }
+    }
+  }
+}
