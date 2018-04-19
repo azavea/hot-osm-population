@@ -1,4 +1,21 @@
+/*
+ * Copyright 2018 Azavea
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.azavea.hotosmpopulation
+
+import java.nio.file.{Files, Paths}
 
 import geotrellis.proj4._
 import geotrellis.raster._
@@ -8,44 +25,42 @@ import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.voronoi._
 import geotrellis.vectortile._
-
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.vividsolutions.jts
+import com.vividsolutions.jts.geom.TopologyException
+import com.vividsolutions.jts.geom.prep.PreparedPolygon
 import org.apache.commons.io.IOUtils
 import spire.syntax.cfor._
 
-case class FootprintGenerator(bucket: String, prefix: String, country: String, tileCrs: CRS = WebMercator) {
+import scala.util._
 
-  private val countryBound = CountryGeometry(country) match {
+case class FootprintGenerator(qaTilesPath: String, country: String, tileCrs: CRS = WebMercator) {
+  val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+
+  val countryBound: MultiPolygon = CountryGeometry(country) match {
     case Some(feat) => feat.geom.reproject(LatLng, tileCrs)
     case None => throw new MatchError(s"Country code $country did not match")
   }
 
-  private val s3client = AmazonS3ClientBuilder.defaultClient
+  val mbtiles = new MBTiles(qaTilesPath, ZoomedLayoutScheme(WebMercator))
 
-  /** Retrieve building features from a vectortile store
-   *
-   *  The vectortiles are drawn from the S3 bucket s3://${bucket}/${prefix}/${z}/${x}/${y}.mvt
-   */
-  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "history") = {
-    val LayoutLevel(zoom, ld) = ll
-    val tileExtent = ld.mapTransform(key)
+  /** Retrieve building features from a vectortile store */
+  def fetchBuildings(key: SpatialKey, ll: LayoutLevel, layer: String = "osm"): Seq[Feature[Polygon, Map[String, Value]]] = {
+    mbtiles.fetch(12, key.col, key.row) match {
+      case Some(vt) =>
+        vt.layers(layer)
+          .polygons
+          .filter{ feat => feat.data.contains("building") }
+        // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
 
-    val s3object = s3client.getObject(bucket, s"$prefix/$zoom/${key._1}/${key._2}.mvt")
-    val vtbuffer = IOUtils.toByteArray(s3object.getObjectContent)
-
-    VectorTile.fromBytes(vtbuffer, tileExtent)
-      .layers(layer)
-      .polygons
-      .filter{ feat => feat.data.contains("building") } // && (feat.data("building") == VBool(true) || feat.data("building") == VString("yes") || feat.data("building") == VString("residential")) }
+      case None =>
+        Seq.empty
+    }
   }
 
   /** Generate building polygons with corresponding number of levels
    */
-  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String = "string") = {
-    val LayoutLevel(zoom, ld) = layout
-    val tileExtent = ld.mapTransform(key)
-
+  def buildingPolysWithLevels(key: SpatialKey, layout: LayoutLevel, layer: String): Seq[(Polygon, Double)] = {
     val buildings = fetchBuildings(key, layout, layer)
     val gpr = new jts.precision.GeometryPrecisionReducer(new jts.geom.PrecisionModel)
 
@@ -53,7 +68,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
       val poly = feat.geom
       val validated = if (!poly.isValid) { gpr.reduce(poly.jtsGeom) } else poly.jtsGeom
       val levels = feat.data.get("building:levels") match {
-        case Some(VString(s)) => s.toDouble
+        case Some(VString(s)) => Try(s.toDouble).toOption.getOrElse(Double.NaN)
         case Some(VInt64(l)) => l.toDouble
         case Some(VSint64(l)) => l.toDouble
         case Some(VWord64(l)) => l.toDouble
@@ -74,28 +89,35 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
   /** Produce a raster giving the total square footage of buildings per pixel in a given
    *  spatial key with a given layout
    */
-  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "history") = {
-    val LayoutLevel(zoom, ld) = layout
+  def apply(key: SpatialKey, layout: LayoutLevel, layer: String = "osm"): Raster[Tile] = {
+    val LayoutLevel(_, ld) = layout
     val tileExtent = ld.mapTransform(key)
 
-    val raster = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
+    val raster: Raster[FloatArrayTile] = Raster(FloatArrayTile.empty(ld.tileCols, ld.tileRows), tileExtent)
     val re = raster.rasterExtent
 
     // compute land area of pixel using an equal area projection for Africa (assumes that this application will focus on African use-cases)
-    val africaAEA = CRS.fromString("+proj=aea +lat_1=20 +lat_2=-23 +lat_0=0 +lon_0=25 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
     val cellArea = tileExtent.toPolygon.reproject(tileCrs, africaAEA).area * re.cellwidth * re.cellheight / re.extent.area
 
-    var accum = 0.0
     buildingPolysWithLevels(key, layout, layer)
       .foreach{ case (poly, levels) => {
-        polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback{
-          def callback(col: Int, row: Int, frac: Double) = {
-            if (col >=0 && col < re.cols && row >= 0 && row < re.rows) {
-              raster.setDouble(col, row, frac * cellArea * levels + (if (raster.getDouble(col, row).isNaN) 0.0 else raster.getDouble(col, row)))
-              accum += frac * cellArea
+        try {
+          polygon.FractionalRasterizer.foreachCellByPolygon(poly, re)(new FractionCallback {
+            def callback(col: Int, row: Int, frac: Double) = {
+              if (col >= 0 && col < re.cols && row >= 0 && row < re.rows) {
+                val p = raster.tile.getDouble(col, row)
+                val v = frac * cellArea * levels + (if (isNoData(p)) 0.0 else p)
+                raster.tile.setDouble(col, row, v)
+              }
             }
-          }
-        })
+          })
+        } catch {
+          case e: ArrayIndexOutOfBoundsException =>
+            println(s"ERROR: ArrayIndexOutOfBoundsException in $key")
+
+          case e: TopologyException =>
+            println(s"ERROR: TopologyException in $key: ${e.getMessage}")
+        }
       }}
 
     raster
@@ -105,7 +127,7 @@ case class FootprintGenerator(bucket: String, prefix: String, country: String, t
    *
    * At present, this function is not recommended to be used in actual analysis.
    */
-  def buildingDensity(key: SpatialKey, layout: LayoutLevel, k: Int = 25, layer: String = "history") = {
+  def buildingDensity(key: SpatialKey, layout: LayoutLevel, k: Int = 25, layer: String = "history"): Raster[FloatArrayTile] = {
     val LayoutLevel(zoom, ld) = layout
     val tileExtent = ld.mapTransform(key)
 

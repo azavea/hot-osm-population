@@ -1,0 +1,106 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "hotosm-coverage-batch-job",
+  "Parameters": {
+    "AWSRegion": {
+      "Type": "String",
+      "Description": "AWS Region to deploy this stack",
+      "Default": "us-east-1",
+      "AllowedValues": [
+        "us-east-1",
+        "us-east-2",
+        "ap-southeast-1"
+      ]
+    },
+    "KeypairName": {
+      "Type": "String",
+      "Description": "Name the EC2 keypair to use for this stack. This should be created before on the console.",
+      "Default": ""
+    },
+    "S3Bucket": {
+      "Type": "String",
+      "Description": "S3 bucket the job needs access to",
+      "Default": "hotosm-population"
+    },
+    "ImageUrl": {
+      "Type": "String",
+      "Description": "URL of the task Docker image",
+      "Default": "670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-coverage"
+    },
+    "JobRoleArn": {
+      "Type": "String",
+      "Description": "IAM Role for Batch Job",
+      "Default": "arn:aws:iam::670261699094:role/osma-health-infra-staging-BatchJobRole-O4HIDOW5B8HI"
+    }
+  },
+  "Resources": {
+    "BatchJobDefinition": {
+      "Type": "AWS::Batch::JobDefinition",
+      "Properties": {
+        "Type": "container",
+        "JobDefinitionName": "hotosm-coverage-botswana-predict",
+        "RetryStrategy": {
+          "Attempts": 1
+        },
+        "Parameters": {
+          "command": "predict",
+          "country_code": "BWA",
+          "country": "botswana",
+          "worldpop": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/WorldPop/BWA15v4.tif"
+              ]
+            ]
+          },
+          "model": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/models/BWA-avg-38/"
+              ]
+            ]
+          },
+          "output": {
+            "Fn::Join": [
+              "s3://",
+              [
+                {
+                  "Ref": "S3Bucket"
+                },
+                "/botswana-predictions.json"
+              ]
+            ]
+          }
+        },
+        "ContainerProperties": {
+          "Command": [
+            "Ref::command",
+            "Ref::country",
+            "Ref::country_code",
+            "Ref::worldpop",
+            "Ref::model",
+            "Ref::output"
+          ],
+          "Memory": 7000,
+          "Privileged": true,
+          "JobRoleArn":  {
+            "Ref": "JobRoleArn"
+          },
+          "ReadonlyRootFilesystem": false,
+          "Vcpus": 2,
+          "Image": {
+            "Ref": "ImageUrl"
+          }
+        }
+      }
+    }
+  }
+}

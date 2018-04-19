@@ -3,6 +3,6 @@ object Version {
   val scala       = "2.11.12"
   val geotools    = "17.1"
   val spire       = "0.13.0"
-  lazy val hadoop = Environment.hadoopVersion
-  lazy val spark  = Environment.sparkVersion
+  lazy val hadoop = "2.7.4"
+  lazy val spark  = "2.2.1"
 }
