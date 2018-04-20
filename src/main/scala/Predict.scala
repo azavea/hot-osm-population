@@ -33,7 +33,7 @@ import geotrellis.spark.io.hadoop.HdfsUtils
 import org.apache.hadoop.fs
 import org.apache.spark.ml.regression.LinearRegressionModel
 import org.apache.spark.storage.StorageLevel
-
+import spire.syntax.cfor._
 
 object PredictApp extends CommandApp(
   name   = "predict-osm-worldpop",
@@ -159,11 +159,11 @@ object Output {
 
       Map(
         "index" -> {
-          val buildingMean = osm.map(_.mean).getOrElse(0.0)
+          // NODATA for the tile implies there are 0 building footprints
+          val actualMean = osm.map(_.mean).getOrElse(0.0)
           for (prdStats <- prd) yield {
-            val offset = model.intercept // intercept: 50 prediction == nothing here
-            val predictionMean = prdStats.mean - offset
-            (buildingMean - predictionMean) / offset
+            val predictionMean = prdStats.mean
+            actualMean / predictionMean
           }
         }.toJson,
         "actual" -> Map(
