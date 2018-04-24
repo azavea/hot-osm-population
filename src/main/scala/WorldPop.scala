@@ -26,10 +26,12 @@ import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.reproject.{Reproject, ReprojectRasterExtent}
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod, Sum}
 import geotrellis.spark.buffer.BufferedTile
+import geotrellis.spark.mask._
+import geotrellis.spark.mask.Mask
 import geotrellis.spark.io.AttributeStore
 import geotrellis.spark.reproject.TileRDDReproject
 import geotrellis.spark.tiling.{LayoutDefinition, LayoutLevel, MapKeyTransform, ZoomedLayoutScheme}
-import geotrellis.vector.Extent
+import geotrellis.vector.{Extent, Polygon}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
@@ -54,11 +56,12 @@ object WorldPop {
      file: String,
      columnName: String,
      layout: LayoutDefinition = ZoomedLayoutScheme(WebMercator, 256).levelForZoom(12).layout,
-     crs: CRS = WebMercator
+     crs: CRS = WebMercator,
+     masks: Traversable[Polygon] = Array.empty[Polygon]
    )(implicit spark: SparkSession): RasterFrame = {
     val (popLatLngRdd, md) = WorldPop.readBufferedTiles(file)(spark.sparkContext)
 
-    val popRdd = TileRDDReproject(
+    val popRdd: TileLayerRDD[SpatialKey] = TileRDDReproject(
       bufferedTiles = popLatLngRdd,
       metadata = md,
       destCrs = crs,
@@ -67,9 +70,10 @@ object WorldPop {
       partitioner = None
     )._2
 
-    val rf = popRdd.toRF
-    import spark.implicits._
-    rf.select(rf.spatialKeyColumn, $"tile" as columnName).asRF
+    val masked: TileLayerRDD[SpatialKey] =
+      if (masks.nonEmpty) popRdd.mask(masks, Mask.Options.DEFAULT) else popRdd
+
+    masked.toRF(columnName)
   }
 
   /**
