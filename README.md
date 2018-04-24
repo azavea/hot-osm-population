@@ -1,1 +1,74 @@
-# hot-osm-population
+# HOTOSM WorldPop vs OSM Coverage
+
+This projects trains a model of population from WorldPop raster vs OSM building footprint from MapBox QA tiles in order to generate estimates of completeness for OSM building coverage.
+
+## Building
+
+This project uses [Apache Spark](https://spark.apache.org/) and is expected to be run through [`spark-submit`](https://spark.apache.org/docs/latest/submitting-applications.html) command line tool.
+
+In order to generate the assembly `.jar` file required for this tool the following command is used:
+
+```sh
+./sbt assembly
+```
+
+This will bootstrap the Scala Build Tool and built the assembly and requires only `java` version `1.8` to be available.
+
+## Running
+
+Project defines multiple main files, for training a model of OSM based on WorldPop raster and for predicting OSM coverage based on trained model. They can be called through `spark-submit` as follows:
+
+```sh
+spark-submit --master "local[*]" --driver-memory 4G \
+    --class com.azavea.hotosmpopulation.TrainApp \
+    target/scala-2.11/hot-osm-population-assembly.jar \
+    --country BWA \
+    --worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
+    --qatiles /hot-osm/mbtiles/botswana.mbtiles \
+    --model /hot-osm/models/BWA-regression
+
+spark-submit --master "local[*]" --driver-memory 4G \
+    --class com.azavea.hotosmpopulation.PredictApp \
+    target/scala-2.11/hot-osm-population-assembly.jar \
+    --country BWA \
+    --worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
+    --qatiles /hot-osm/mbtiles/botswana.mbtiles \
+    --model /hot-osm/models/BWA-regression \
+    --output /hot-osm/botswana-predict-percentage.json
+```
+
+The arguments appearing before the `hot-osm-population-assembly.jar` are to `spark-submit` command.
+The arguments appearing after the JAR are specific to the application:
+
+`country`: `ADM0_A3` country code, used to lookup country boundary
+`worldpop`: URI to WorldPop raster, maybe `file:/` or `s3://` scheme.
+`qatiles`: Path to MapBox QA `.mbtiles` file for the country, must be local.
+`model`: Path to save/load model directory, is  must be local.
+`output`: Path to generate prediction JSON output, must be local.
+
+
+For development the train and predict commands can are scripted through the `Makefile`:
+
+```sh
+make train WORKDIR=/hot-osm
+make predict WORKDIR=/hot-osm
+```
+
+## Docker
+Docker images suitable for AWS Batch can be built and pushed to ECR using:
+
+```sh
+make docker
+aws ecr get-login --no-include-email --region us-east-1 --profile hotosm
+docker login -u AWS ... # copied from output of above command
+make push-ecr ECR_REPO=670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-population:latest
+```
+
+The `ENTRYPOINT` for docker images is `docker/task.sh` which handles the setup for the job.
+Note that `task.sh` uses positional arguments where all file references may refer use `s3://` scheme.
+
+The container may be run locally with:
+
+```sh
+docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana BWA s3://bucket/WorldPop/BWA15v4.tif s3://bucket/models/BWA-regression/ s3://bucket/prediction/botswana.json
+```
