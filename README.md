@@ -22,25 +22,25 @@ Project defines multiple main files, for training a model of OSM based on WorldP
 spark-submit --master "local[*]" --driver-memory 4G \
     --class com.azavea.hotosmpopulation.TrainApp \
     target/scala-2.11/hot-osm-population-assembly.jar \
-    --country BWA \
+    --country botswana \
     --worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
     --qatiles /hot-osm/mbtiles/botswana.mbtiles \
-    --model /hot-osm/models/BWA-regression
+    --model /hot-osm/models/botswana-regression
 
 spark-submit --master "local[*]" --driver-memory 4G \
     --class com.azavea.hotosmpopulation.PredictApp \
     target/scala-2.11/hot-osm-population-assembly.jar \
-    --country BWA \
+    --country botswana \
     --worldpop file:/hot-osm/WorldPop/BWA15v4.tif \
     --qatiles /hot-osm/mbtiles/botswana.mbtiles \
-    --model /hot-osm/models/BWA-regression \
-    --output /hot-osm/botswana-predict-percentage.json
+    --model /hot-osm/models/botswana-regression \
+    --output /hot-osm/botswana.json
 ```
 
 The arguments appearing before the `hot-osm-population-assembly.jar` are to `spark-submit` command.
 The arguments appearing after the JAR are specific to the application:
 
-`country`: `ADM0_A3` country code, used to lookup country boundary
+`country`: `ADM0_A3` country code or name, used to lookup country boundary
 `worldpop`: URI to WorldPop raster, maybe `file:/` or `s3://` scheme.
 `qatiles`: Path to MapBox QA `.mbtiles` file for the country, must be local.
 `model`: Path to save/load model directory, is  must be local.

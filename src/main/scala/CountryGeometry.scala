@@ -19,13 +19,19 @@ import geotrellis.vector._
 import geotrellis.shapefile._
 
 object CountryGeometry {
+  def slug(name: String): String = {
+    name.toLowerCase.replace(' ', '_')
+  }
 
-  def apply(countryADM3Code: String): Option[MultiPolygonFeature[Map[String, Object]]] = {
-
+  def apply(nameOrCode: String): Option[MultiPolygonFeature[Map[String, Object]]] = {
     val url = getClass.getResource("/ne_50m_admin_0_countries.shp")
     val allCountries = ShapeFileReader.readMultiPolygonFeatures(url)
 
-    allCountries.filter{country => country.data("ADM0_A3") == countryADM3Code}.headOption
+    allCountries.filter{country =>
+      val longName: String = country.data("NAME_LONG").asInstanceOf[String]
+      val code = country.data("ADM0_A3")
+      (code == nameOrCode) || (slug(longName) == slug(nameOrCode))
+    }.headOption
   }
 
 }
