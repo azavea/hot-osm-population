@@ -54,6 +54,36 @@ make train WORKDIR=/hot-osm
 make predict WORKDIR=/hot-osm
 ```
 
+## `prediction.json`
+Because WorldPop and OSM have radically different resolutions for comparison to be valid they need to be aggregated to a common resolution. Specifically WorldPop will identify population centers and evenly spread estimated population for that center over each pixel.  Whereas OSM building footprints are quite resolute and are covered can vary from pixel to pixel on 100m per pixel raster.
+
+Experimentally we see that aggregating the results per tile at zoom level 12 on WebMercator TMS layout produces visually useful relationship.
+
+The output of model prediction is saved as JSON where a record exist for every zoom level 12 TMS tile covering the country.
+The key is `"{zoom}/{column}/{row}"` following TMS endpoint convention.
+
+```json
+{
+    "12/2337/2337": {
+        "index": 1.5921462086435942,
+        "actual": {
+            "pop_sum": 14.647022571414709,
+            "osm_sum": 145.48814392089844,
+            "osm_avg": 72.74407196044922
+        },
+        "prediction": {
+            "osm_sum": 45872.07371520996,
+            "osm_avg": 45.68931644941231
+        }
+    }
+}
+```
+
+Units are:
+`pop`: estimated population
+`osm`: square meters of building footprint
+
+
 ## Docker
 Docker images suitable for AWS Batch can be built and pushed to ECR using:
 
