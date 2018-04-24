@@ -88,9 +88,9 @@ object TrainApp extends CommandApp(
       popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
       /** OSM is way more resolute than and has much higher variance than WorldPop
-        * We're going to average out both in 8x8 cells to get a tighter regression
+        * We're going to average out both in 16x16 cells to get a tighter regression
         */
-      val downsampled = resampleRF(popWithOsm, 32, Average)
+      val downsampled = resampleRF(popWithOsm, 16, Sum)
 
       // turn times into pixels so we can train on per-pixel values
       // filter out places where either WorldPop or OSM is undefined
