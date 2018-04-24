@@ -162,7 +162,7 @@ object Output {
           val actualMean = osm.map(_.mean).getOrElse(0.0)
           for (prdStats <- prd) yield {
             val predictionMean = prdStats.mean
-            actualMean / predictionMean
+            (actualMean - predictionMean) / predictionMean
           }
         }.toJson,
         "actual" -> Map(
