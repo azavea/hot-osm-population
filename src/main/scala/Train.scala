@@ -99,6 +99,10 @@ object TrainApp extends CommandApp(
       val model = new LinearRegression().setFitIntercept(false).setLabelCol("osm").fit(features)
       model.save(modelUri)
 
+      println(s"Intercept: ${model.intercept}")
+      println(s"Coefficients: ${model.coefficients}")
+      println(s"rootMeanSquaredError: ${model.summary.rootMeanSquaredError}")
+
       /** If we want to verify the model output we can save it as GeoTiff */
       //val scored = model.transform(explodeTiles(downsampled, filterNaN = false))
       //val scored_tiles = assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
