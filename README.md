@@ -83,6 +83,13 @@ Units are:
 `pop`: estimated population
 `osm`: square meters of building footprint
 
+Why `_sum` and `_avg`? While visually the results are aggregated to one result per zoom 12 tile, training and prediction is happening at 16x16 pixels per zoom 12 tile.
+At this cell size there is enough smoothing between WorldPop and OSM to start building regressions.
+
+`index` is computed as `(predicted - actual) / predicted`, it will:
+- show negative for areas with low OSM coverage for WorldPop population coverage
+- show positive for areas with OSM coverage greater than WorldPop population coverage
+- stay close to `0` where the ratio of OSM/WorldPop coverage is average 
 
 ## Docker
 Docker images suitable for AWS Batch can be built and pushed to ECR using:

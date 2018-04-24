@@ -26,17 +26,17 @@ train: ${ASSEMBLY_JAR}
 	spark-submit --master "local[*]" --driver-memory 4G \
 --class com.azavea.hotosmpopulation.TrainApp \
 target/scala-2.11/hot-osm-population-assembly.jar \
---country BWA \
+--country botswana \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
 --qatiles ${WORKDIR}/mbtiles/botswana.mbtiles \
---model ${WORKDIR}/models/BWA-avg-32
+--model ${WORKDIR}/models/botswana-regression
 
 predict: ${ASSEMBLY_JAR}
 	spark-submit --master "local[*]" --driver-memory 4G \
 --class com.azavea.hotosmpopulation.PredictApp \
 target/scala-2.11/hot-osm-population-assembly.jar \
---country BWA \
+--country botswana \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
 --qatiles ${WORKDIR}/mbtiles/botswana.mbtiles \
---model ${WORKDIR}/models/BWA-avg-32 \
---output ${WORKDIR}/botswana-predict-percentage.json
+--model ${WORKDIR}/models/botswana-regression \
+--output ${WORKDIR}/botswana.json
