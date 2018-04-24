@@ -96,7 +96,7 @@ object TrainApp extends CommandApp(
       // filter out places where either WorldPop or OSM is undefined
       val features = Utils.explodeTiles(downsampled, filterNaN = true)
 
-      val model = new LinearRegression().setFitIntercept(true).setLabelCol("osm").fit(features)
+      val model = new LinearRegression().setFitIntercept(false).setLabelCol("osm").fit(features)
       model.save(modelUri)
 
       /** If we want to verify the model output we can save it as GeoTiff */
