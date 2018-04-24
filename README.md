@@ -104,8 +104,15 @@ make push-ecr ECR_REPO=670261699094.dkr.ecr.us-east-1.amazonaws.com/hotosm-popul
 The `ENTRYPOINT` for docker images is `docker/task.sh` which handles the setup for the job.
 Note that `task.sh` uses positional arguments where all file references may refer use `s3://` scheme.
 
+The three arguments are are required in order:
+`COMMAND`: `train` or `predict`
+`COUNTRY`: Country name to download mbtiles
+`WORLDPOP`: Name of WorldPop tiff or S3 URI to WorldPop tiff
+
 The container may be run locally with:
 
 ```sh
-docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana BWA s3://bucket/WorldPop/BWA15v4.tif s3://bucket/models/BWA-regression/ s3://bucket/prediction/botswana.json
+docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana s3://bucket/WorldPop/BWA15v4.tif
+# OR
+docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana BWA15v4.tif
 ```

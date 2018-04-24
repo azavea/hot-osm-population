@@ -8,8 +8,12 @@ COMMAND=$1
 COUNTRY=$2
 WORLDPOP=$3
 
+if [[ ${WORLDPOP} == s3* ]]; then
+    WORLDPOP_URI=${WORLDPOP}
+else
+    WORLDPOP_URI=s3://${BUCKET}/WorldPop/$3
+fi
 OSM_QA_URI=https://s3.amazonaws.com/mapbox/osm-qa-tiles-production/latest.country/${COUNTRY}.mbtiles.gz
-WORLDPOP_URI=s3://${BUCKET}/WorldPop/$3
 MODEL_URI=s3://${BUCKET}/models/${COUNTRY}-regression/
 OUTPUT_URI=s3://${BUCKET}/predict/${COUNTRY}.json
 
