@@ -28,7 +28,7 @@ import java.nio.file._
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.raster.resample.Average
+import geotrellis.raster.resample.Sum
 import geotrellis.spark.io.hadoop.HdfsUtils
 import org.apache.hadoop.fs
 import org.apache.spark.ml.regression.LinearRegressionModel
@@ -67,7 +67,7 @@ object PredictApp extends CommandApp(
 
       val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
       val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, countryCode, "osm")
-      val downsampled = resampleRF(popWithOsm, 32, Average)
+      val downsampled = resampleRF(popWithOsm, 16, Sum)
       val features = Utils.explodeTiles(downsampled, filterNaN = false)
       val scored = model.transform(features)
       val assembled = Utils.assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
@@ -115,9 +115,8 @@ object Output {
         Map(
           "index" -> {
             val buildingMean = act_osm_avg.getOrElse(0.0)
-            val offset = model.intercept // intercept: 50 prediction == nothing here
             for (predictionMean <- prd_osm_avg) yield {
-              (buildingMean - predictionMean) / offset
+              (buildingMean - predictionMean) / predictionMean
             }
           }.toJson,
           "actual" -> Map(
@@ -163,7 +162,7 @@ object Output {
           val actualMean = osm.map(_.mean).getOrElse(0.0)
           for (prdStats <- prd) yield {
             val predictionMean = prdStats.mean
-            actualMean / predictionMean
+            (actualMean - predictionMean) / predictionMean
           }
         }.toJson,
         "actual" -> Map(

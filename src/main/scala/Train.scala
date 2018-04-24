@@ -88,16 +88,20 @@ object TrainApp extends CommandApp(
       popWithOsm.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
       /** OSM is way more resolute than and has much higher variance than WorldPop
-        * We're going to average out both in 8x8 cells to get a tighter regression
+        * We're going to average out both in 16x16 cells to get a tighter regression
         */
-      val downsampled = resampleRF(popWithOsm, 32, Average)
+      val downsampled = resampleRF(popWithOsm, 16, Sum)
 
       // turn times into pixels so we can train on per-pixel values
       // filter out places where either WorldPop or OSM is undefined
       val features = Utils.explodeTiles(downsampled, filterNaN = true)
 
-      val model = new LinearRegression().setFitIntercept(true).setLabelCol("osm").fit(features)
+      val model = new LinearRegression().setFitIntercept(false).setLabelCol("osm").fit(features)
       model.save(modelUri)
+
+      println(s"Intercept: ${model.intercept}")
+      println(s"Coefficients: ${model.coefficients}")
+      println(s"rootMeanSquaredError: ${model.summary.rootMeanSquaredError}")
 
       /** If we want to verify the model output we can save it as GeoTiff */
       //val scored = model.transform(explodeTiles(downsampled, filterNaN = false))
