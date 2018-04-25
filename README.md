@@ -105,9 +105,10 @@ The `ENTRYPOINT` for docker images is `docker/task.sh` which handles the setup f
 Note that `task.sh` uses positional arguments where all file references may refer use `s3://` scheme.
 
 The three arguments are are required in order:
-`COMMAND`: `train` or `predict`
-`COUNTRY`: Country name to download mbtiles
-`WORLDPOP`: Name of WorldPop tiff or S3 URI to WorldPop tiff
+
+- `COMMAND`: `train` or `predict`
+- `COUNTRY`: Country name to download mbtiles
+- `WORLDPOP`: Name of WorldPop tiff or S3 URI to WorldPop tiff
 
 The container may be run locally with:
 
