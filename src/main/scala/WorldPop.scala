@@ -23,6 +23,7 @@ import geotrellis.spark.{TileLayerRDD, _}
 import geotrellis.raster._
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
+import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.reproject.{Reproject, ReprojectRasterExtent}
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod, Sum}
 import geotrellis.spark.buffer.BufferedTile
@@ -71,7 +72,11 @@ object WorldPop {
     )._2
 
     val masked: TileLayerRDD[SpatialKey] =
-      if (masks.nonEmpty) popRdd.mask(masks, Mask.Options.DEFAULT) else popRdd
+      if (masks.nonEmpty)
+        popRdd.mask(masks, Mask.Options.DEFAULT.copy(
+          rasterizerOptions = Rasterizer.Options(includePartial = true, sampleType = PixelIsArea)))
+      else
+        popRdd
 
     masked.toRF(columnName)
   }

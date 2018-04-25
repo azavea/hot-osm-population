@@ -24,16 +24,17 @@ push-ecr:
 
 train: ${ASSEMBLY_JAR}
 	spark-submit --master "local[*]" --driver-memory 4G \
---class com.azavea.hotosmpopulation.TrainApp \
+--class com.azavea.hotosmpopulation.LabeledTrainApp \
 target/scala-2.11/hot-osm-population-assembly.jar \
 --country botswana \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
 --qatiles ${WORKDIR}/mbtiles/botswana.mbtiles \
+--training ${CURDIR}/data/botswana-training-set.json \
 --model ${WORKDIR}/models/botswana-regression
 
 predict: ${ASSEMBLY_JAR}
 	spark-submit --master "local[*]" --driver-memory 4G \
---class com.azavea.hotosmpopulation.PredictApp \
+--class com.azavea.hotosmpopulation.LabeledPredictApp \
 target/scala-2.11/hot-osm-population-assembly.jar \
 --country botswana \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
