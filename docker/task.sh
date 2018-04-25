@@ -16,7 +16,7 @@ fi
 OSM_QA_URI=https://s3.amazonaws.com/mapbox/osm-qa-tiles-production/latest.country/${COUNTRY}.mbtiles.gz
 MODEL_URI=s3://${BUCKET}/models/${COUNTRY}-regression/
 OUTPUT_URI=s3://${BUCKET}/predict/${COUNTRY}.json
-TRAINING_URI=s3://${BUCKET}/taining/${COUNTRY}.json
+TRAINING_URI=s3://${BUCKET}/training/${COUNTRY}.json
 
 curl -o - ${OSM_QA_URI} | gunzip > /task/${COUNTRY}.mbtiles
 
