@@ -75,7 +75,6 @@ object Output {
         },
         "actual" -> Map(
           "pop_sum" -> res.actualPopulation,
-          "pop_avg" -> res.actualPopulation / res.popCount,
           "osm_sum" -> res.actualOsmFootprint,
           "osm_avg" -> res.actualOsmFootprint / res.osmCount
         ).toJson,
