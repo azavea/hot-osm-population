@@ -69,18 +69,20 @@ object Output {
 
     val statsToJson = { res: Result =>
       val actualOsmOrZero = if (res.actualOsmFootprint.isNaN) 0.0 else res.actualOsmFootprint
+      val expectedOsmOrZero = if (res.expectedOsmFootprint.isNaN) 0.0 else res.expectedOsmFootprint
+
       Map(
         "index" -> {
-          JsNumber((actualOsmOrZero - res.expectedOsmFootprint) / res.expectedOsmFootprint)
+          JsNumber((actualOsmOrZero - expectedOsmOrZero) / expectedOsmOrZero)
         },
         "actual" -> Map(
           "pop_sum" -> res.actualPopulation,
-          "osm_sum" -> res.actualOsmFootprint,
-          "osm_avg" -> res.actualOsmFootprint / res.osmCount
+          "osm_sum" -> actualOsmOrZero,
+          "osm_avg" -> actualOsmOrZero / res.osmCount
         ).toJson,
         "prediction" -> Map(
-          "osm_sum" -> actualOsmOrZero,
-          "osm_avg" -> actualOsmOrZero / res.popCount // prediction for every pixel of population
+          "osm_sum" -> expectedOsmOrZero,
+          "osm_avg" -> expectedOsmOrZero / res.popCount // prediction for every pixel of population
         ).toJson
       )
     }
