@@ -68,9 +68,10 @@ object Output {
     val layer = scored_tiles.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get
 
     val statsToJson = { res: Result =>
+      val actualOsmOrZero = if (res.actualOsmFootprint.isNaN) 0.0 else res.actualOsmFootprint
       Map(
         "index" -> {
-          JsNumber((res.actualOsmFootprint - res.expectedOsmFootprint) / res.expectedOsmFootprint)
+          JsNumber((actualOsmOrZero - res.expectedOsmFootprint) / res.expectedOsmFootprint)
         },
         "actual" -> Map(
           "pop_sum" -> res.actualPopulation,
@@ -79,8 +80,8 @@ object Output {
           "osm_avg" -> res.actualOsmFootprint / res.osmCount
         ).toJson,
         "prediction" -> Map(
-          "osm_sum" -> res.expectedOsmFootprint,
-          "osm_avg" -> res.expectedOsmFootprint / res.popCount // prediction for every pixel of population
+          "osm_sum" -> actualOsmOrZero,
+          "osm_avg" -> actualOsmOrZero / res.popCount // prediction for every pixel of population
         ).toJson
       )
     }

@@ -61,9 +61,9 @@ object LabeledPredictApp extends CommandApp(
       val scored = model.transform(features)
       val assembled = Utils.assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
 
-      saveCog(
-        rdd = assembled.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get,
-        catalog = "/hot-osm/cog", name ="BWA15v4-label-4-sum", zooms = (12,6))
+//      saveCog(
+//        rdd = assembled.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get,
+//        catalog = "/hot-osm/cog", name ="BWA15v4-label-4-sum", zooms = (12,6))
 
       Output.generateJsonFromTiles(assembled, model, outputUri)
     }
