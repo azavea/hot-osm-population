@@ -67,7 +67,7 @@ object WorldPop {
       case Some(threshold) =>
         popLatLngRdd.mapValues{ bt =>
           val lowPassTile = bt.tile.mapDouble { d =>
-            if (isData(d) && d < threshold) Double.NaN else d
+            if (isData(d) && d < threshold) 0 else d
           }
           BufferedTile(lowPassTile, bt.targetArea)
         }
