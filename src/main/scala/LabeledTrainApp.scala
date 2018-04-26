@@ -45,10 +45,11 @@ object LabeledTrainApp extends CommandApp(
     val worldPopUriO = Opts.option[String]("worldpop", help = "URI of WorldPop raster for a country")
     val qaTilesPathO = Opts.option[String]("qatiles", help = "Path to country QA VectorTiles mbtiles file")
     val modelUriO    = Opts.option[String]("model", help = "URI for model to be saved")
+    val lowPassO     = Opts.option[Double]("lowpass", help = "Lowpass threshold for WorldPop values").orNone
 
     (
-      countryCodeO, worldPopUriO, qaTilesPathO, modelUriO, trainingPathO
-    ).mapN { (country, worldPopUri, qaTilesPath, modelUri, trainingPath) =>
+      countryCodeO, worldPopUriO, qaTilesPathO, modelUriO, trainingPathO, lowPassO
+    ).mapN { (country, worldPopUri, qaTilesPath, modelUri, trainingPath, lowPass) =>
 
       implicit val spark: SparkSession = SparkSession.builder().
         appName("WorldPop-OSM-Train").
@@ -76,7 +77,7 @@ object LabeledTrainApp extends CommandApp(
       println(s"Using ${trainingSet.length} training polygons")
 
       // read WorldPop in WebMercator Zoom 12
-      val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop", masks = trainingSet)
+      val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop", masks = trainingSet, lowPass = lowPass)
 
       // Add OSM building footprints as rasterized tile column
       val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, country, "osm")

@@ -45,7 +45,7 @@ The arguments appearing after the JAR are specific to the application:
 `qatiles`: Path to MapBox QA `.mbtiles` file for the country, must be local.
 `model`: Path to save/load model directory, is  must be local.
 `output`: Path to generate prediction JSON output, must be local.
-
+`lowpass`: Threshold value for WorldPop. WorldPop cells values smaller than threshold will be set to `0.0`.
 
 For development the train and predict commands can are scripted through the `Makefile`:
 

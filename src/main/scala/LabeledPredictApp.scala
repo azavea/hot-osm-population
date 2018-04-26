@@ -32,10 +32,11 @@ object LabeledPredictApp extends CommandApp(
     val countryCodeO = Opts.option[String]("country", help = "Country code to lookup boundary from ne_50m_admin")
     val modelUriO    = Opts.option[String]("model", help = "URI for model to be saved")
     val outputUriO   = Opts.option[String]("output", help = "URI for JSON output")
+    val lowPassO     = Opts.option[Double]("lowpass", help = "Lowpass threshold for WorldPop values").orNone
 
     (
-      worldPopUriO, qaTilesPathO, countryCodeO, modelUriO, outputUriO
-    ).mapN { (worldPopUri, qaTilesPath, countryCode, modelUri, outputUri) =>
+      worldPopUriO, qaTilesPathO, countryCodeO, modelUriO, outputUriO, lowPassO
+    ).mapN { (worldPopUri, qaTilesPath, countryCode, modelUri, outputUri, lowPass) =>
 
       implicit val spark: SparkSession = SparkSession.builder().
         appName("WorldPop-OSM-Predict").
@@ -53,7 +54,7 @@ object LabeledPredictApp extends CommandApp(
 
       val model = LinearRegressionModel.load(modelUri)
 
-      val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
+      val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop", lowPass = lowPass)
       val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, countryCode, "osm")
       val downsampled = resampleRF(popWithOsm, 4, Sum)
 

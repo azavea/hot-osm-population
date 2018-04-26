@@ -30,7 +30,8 @@ target/scala-2.11/hot-osm-population-assembly.jar \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
 --qatiles ${WORKDIR}/mbtiles/botswana.mbtiles \
 --training ${CURDIR}/data/botswana-training-set.json \
---model ${WORKDIR}/models/botswana-regression
+--model ${WORKDIR}/models/botswana-regression \
+--lowpass 0.1
 
 predict: ${ASSEMBLY_JAR}
 	spark-submit --master "local[*]" --driver-memory 4G \
@@ -40,4 +41,5 @@ target/scala-2.11/hot-osm-population-assembly.jar \
 --worldpop file:${WORKDIR}/WorldPop/BWA15v4.tif \
 --qatiles ${WORKDIR}/mbtiles/botswana.mbtiles \
 --model ${WORKDIR}/models/botswana-regression \
---output ${WORKDIR}/botswana.json
+--output ${WORKDIR}/botswana.json \
+--lowpass 0.1
