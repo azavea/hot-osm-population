@@ -15,27 +15,15 @@
  */
 package com.azavea.hotosmpopulation
 
-import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
-
 import astraea.spark.rasterframes._
-import geotrellis.spark._
-import geotrellis.raster._
-import org.apache.spark.rdd._
-import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
-import java.nio.file._
-
-import cats.implicits._
+import com.azavea.hotosmpopulation.Utils._
 import com.monovore.decline._
 import geotrellis.raster.resample.Sum
-import geotrellis.spark.io.hadoop.HdfsUtils
-import org.apache.hadoop.fs
 import org.apache.spark.ml.regression.LinearRegressionModel
-import org.apache.spark.storage.StorageLevel
-import spire.syntax.cfor._
+import org.apache.spark.sql.SparkSession
+import cats.implicits._
 
-object PredictApp extends CommandApp(
+object LabeledPredictApp extends CommandApp(
   name   = "predict-osm-worldpop",
   header = "Predict OSM building density from WorldPop",
   main   = {
@@ -67,10 +55,16 @@ object PredictApp extends CommandApp(
 
       val pop: RasterFrame = WorldPop.rasterFrame(worldPopUri, "pop")
       val popWithOsm: RasterFrame = OSM.withBuildingsRF(pop, qaTilesPath, countryCode, "osm")
-      val downsampled = resampleRF(popWithOsm, 16, Sum)
+      val downsampled = resampleRF(popWithOsm, 4, Sum)
+
       val features = Utils.explodeTiles(downsampled, filterNaN = false)
       val scored = model.transform(features)
       val assembled = Utils.assembleTiles(scored, downsampled.tileLayerMetadata.left.get)
+
+//      saveCog(
+//        rdd = assembled.toMultibandTileLayerRDD($"pop", $"osm", $"prediction").left.get,
+//        catalog = "/hot-osm/cog", name ="BWA15v4-label-4-sum", zooms = (12,6))
+
       Output.generateJsonFromTiles(assembled, model, outputUri)
     }
   }
