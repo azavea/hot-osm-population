@@ -117,3 +117,96 @@ docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana s3:/
 # OR
 docker run -it --rm -v ~/.aws:/root/.aws hotosm-population predict botswana BWA15v4.tif
 ```
+
+## Methodology
+
+Our core problem is to estimate the completeness of Open Street Map coverage of building footprints in areas where the map is known to be incomplete.
+In order to produce that expectation we need to correlate OSM building footprints with another data set.
+We assume population to be the driving factor for building construction so we use [WorldPop](http://www.worldpop.org.uk/) as the independent variable.  
+Thus we're attempting to derive a relationship between population and building area used by that population.
+
+### OpenStreetMap 
+
+OSM geometries are sourced from [MapBox OSM QA tiles](https://osmlab.github.io/osm-qa-tiles/). 
+They are rasterized to a layer with `CellSize(38.2185,38.2185)` in Web Mercator projection, `EPSG:3857`.
+This resolution corresponds to TMS zoom level 15 with 256x256 pixel tiles.
+The cell value is the area of the building footprint that intersects pixel footprint in square meters.
+If multiple buildings overlap a single pixel their footprints are combined.
+       
+At this raster resolution resulting pixels cover buildings with sufficient precision:
+
+| Satellite     | Rasterized Buildings |
+| ------------- |:--------------------:|
+|<img width="400" alt="screen shot 2018-04-30 at 10 43 47 am" src="https://user-images.githubusercontent.com/1158084/39445479-25a400d0-4c89-11e8-9fd8-21fe39ab2e97.png">|<img width="400" alt="screen shot 2018-04-30 at 10 43 29 am" src="https://user-images.githubusercontent.com/1158084/39445478-2594a004-4c89-11e8-90cb-55000150dfd4.png">|
+ 
+
+### WorldPop
+
+WorldPop raster is provided in `EPSG:4326` with `CellSize(0.0008333, 0.0008333)`, this is close to 100m at equator.
+Because we're going to be predicting and reporting in `EPSG:3857` we reproject the raster using `SUM` resample method, aggregating population density values.  
+
+Comparing WorldPop to OSM for Nata, Batswana reveals a problem:   
+
+| WorldPop      | WorldPop + OSM | OSM + Satellite |
+| ------------- |:--------------:|:---------------:|
+|<img width="256" alt="screen shot 2018-04-30 at 10 41 22 am" src="https://user-images.githubusercontent.com/1158084/39446035-1706ea5e-4c8b-11e8-9925-1118e1b30b3e.png">|<img width="256" alt="screen shot 2018-04-30 at 10 41 39 am" src="https://user-images.githubusercontent.com/1158084/39446036-17173580-4c8b-11e8-8f65-305f61ddb10b.png">|<img width="256" alt="screen shot 2018-04-30 at 10 42 02 am" src="https://user-images.githubusercontent.com/1158084/39446037-1723c548-4c8b-11e8-9caf-e7414ecdca3e.png">|
+
+Even though WorldPop raster resolution is ~100m the population density is spread evenly at `8.2 ppl/pixel` for the blue area.
+This makes it difficult to find relation between individual pixel of population and building area, which ranges from 26 to 982 in this area alone.
+The conclusion is that we must aggregate both population and building area to the point where they share resolution and aggregate trend may emerge.
+
+Plotting a sample of population vs building area we see this as stacks of multiple area values for single population area:
+<img width="1236" alt="screen shot 2018-04-30 at 3 53 20 pm" src="https://user-images.githubusercontent.com/1158084/39447280-4824e25e-4c8f-11e8-99dd-181cf711333b.png">
+
+Its until we reduce aggregate all values at TMS zoom 17 that a clear trend emerges:
+<img width="1235" alt="screen shot 2018-04-26 at 1 41 09 pm" src="https://user-images.githubusercontent.com/1158084/39447285-4cb6e308-4c8f-11e8-85b1-1d1af6f89c1b.png">
+
+Finding line of best fit for gives us 6.5 square meters of building footprint per person in Botswana with R-squared value of `0.88069`.
+Aggregating to larger areas does not significantly change the fit or the slope of the line.  
+
+### Data Quality
+
+Following data quality issues have been encountered and considered:
+
+Estimates of WorldPop population depend on administrative census data. These estimates data varies in quality and recency from country to country.
+To avoid training on data from various sources we fit a model per country where sources are most likely to be consistent, rather than larger areas.
+ 
+WorldPop and OSM are updated at different intervals and do not share coverage. This leads to following problems:
+
+- Regions in WorldPop showing population that are not covered by OSM
+- Regions in OSM showing building footprints not covered by WorldPop
+- Incomplete OSM coverage per Region
+
+To address above concerns we mark regions where OSM/WorldPop relation appears optimal, this allows us to compare other areas and reveal the above problems using the derived model. For further discussion and examples see [training set](azavea/hot-osm-population/blob/master/data/README.md) documentation.
+
+### Workflow
+
+Overall workflow as follows:
+
+**Preparation**
+
+- Read WorldPop raster for country
+- Reproject WorldPop to `EPSG:3857` TMS Level 15 at `256x256` pixel tiles.
+- Rasterize OSM building footprints to `EPSG:3857` TMS Level 15 at `256x256` pixel tiles.
+- Aggregate both population and building area to `4x4` tile using `SUM` resample method.
+
+**Training**
+
+- Mask WorldPop and OSM raster by training set polygons.
+- Set all OSM `NODATA` cell values to `0.0`.
+- Fit and save `LinearRegressionModel` to population vs. building area.
+    - Fix y-intercept at '0.0'.
+   
+**Prediction**
+- Apply `LinearRegressionModel` to get expected building area.
+- Sum all of `4x4` pixel in a tile.
+- Report
+    - Total population
+    - Actual building area
+    - Expected building area
+    - Completeness index as `(actual area - expect area) / expected area`
+
+Because the model is derived from well labeled areas which we expect it to be stable in describing the usage building space per country. 
+This enables us to re-run the prediction process with updated OSM input and track changes in OSM coverage.   
+
+   
