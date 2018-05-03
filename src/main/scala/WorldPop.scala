@@ -58,12 +58,24 @@ object WorldPop {
      columnName: String,
      layout: LayoutDefinition = ZoomedLayoutScheme(WebMercator, 256).levelForZoom(12).layout,
      crs: CRS = WebMercator,
-     masks: Traversable[Polygon] = Array.empty[Polygon]
+     masks: Traversable[Polygon] = Array.empty[Polygon],
+     lowPass: Option[Double] = None
    )(implicit spark: SparkSession): RasterFrame = {
     val (popLatLngRdd, md) = WorldPop.readBufferedTiles(file)(spark.sparkContext)
 
+    val filtered = lowPass match {
+      case Some(threshold) =>
+        popLatLngRdd.mapValues{ bt =>
+          val lowPassTile = bt.tile.mapDouble { d =>
+            if (isData(d) && d < threshold) 0 else d
+          }
+          BufferedTile(lowPassTile, bt.targetArea)
+        }
+      case None => popLatLngRdd
+    }
+
     val popRdd: TileLayerRDD[SpatialKey] = TileRDDReproject(
-      bufferedTiles = popLatLngRdd,
+      bufferedTiles = filtered,
       metadata = md,
       destCrs = crs,
       targetLayout = Right(layout),
