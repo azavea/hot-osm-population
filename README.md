@@ -177,7 +177,7 @@ WorldPop and OSM are updated at different intervals and do not share coverage. T
 - Regions in OSM showing building footprints not covered by WorldPop
 - Incomplete OSM coverage per Region
 
-To address above concerns we mark regions where OSM/WorldPop relation appears optimal, this allows us to compare other areas and reveal the above problems using the derived model. For further discussion and examples see [training set](azavea/hot-osm-population/blob/master/data/README.md) documentation.
+To address above concerns we mark regions where OSM/WorldPop relation appears optimal, this allows us to compare other areas and reveal the above problems using the derived model. For further discussion and examples see [training set](data/README.md) documentation.
 
 ### Workflow
 
